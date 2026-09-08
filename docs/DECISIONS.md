@@ -497,9 +497,13 @@ across both tiers and eval results are comparable. 1.3 GB is a fair price for th
 `qwen3.5:0.8b` (1.0 GB) is the fallback if memory gets tight, at real risk to JSON adherence under
 `PromptedOutput` (D14).
 
-**Unverified until pulled:** these tags come from the Ollama library listing. Run `make models`
-before day one — ~9.3 GB of downloads, and any tag that does not resolve is a tier remapping in
-`config.py`, not a code change.
+**Verified on 2026-09-08.** Both tags pulled cleanly and matched the listed sizes (2.7 GB / 6.6 GB,
+8.7 GB on disk after layer sharing). `qwen3.5:9b` was smoke-tested on a generated PNG and correctly
+described it, so the multimodal claim holds and the `standard` / `vision` collapse is sound.
+
+Also observed: the model emits a `Thinking...` block by default. Thinking must be explicitly
+disabled on `fast`-tier classification calls, or every triage call pays for reasoning tokens that
+are discarded — this is why `CLAUDE.md` calls for it, and step 3 must actually implement it.
 
 **Touches:** `CLAUDE.md` local models section · `Makefile` · `.env.example` · `docs/eval.md` ·
 `docs/START-HERE.md`.
@@ -512,7 +516,9 @@ before day one — ~9.3 GB of downloads, and any tag that does not resolve is a 
 |---|---|---|
 | 1 | Effectively a solo build, roughly four weeks (D1) | A deadline is set, or teammates start committing |
 | 2 | Qwen via Ollama needs prompted JSON, not tool calling (D14) | The eval set (D5) shows `ToolOutput` is reliable |
-| 3 | The `qwen3.5` tags resolve on Ollama (D20) | `make models` is run for the first time |
+
+Resolved: the `qwen3.5` tags resolve and `qwen3.5:9b` is multimodal — both verified by pulling and
+smoke-testing on 2026-09-08 (D20).
 
 No open questions remain.
 
