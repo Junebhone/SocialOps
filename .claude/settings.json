@@ -1,0 +1,48 @@
+{
+  "permissions": {
+    "allow": [
+      "Read", "Edit", "Write",
+      "Bash(make:*)", "Bash(git status:*)", "Bash(git diff:*)", "Bash(git log:*)",
+      "Bash(git add:*)", "Bash(git commit:*)", "Bash(git checkout:*)", "Bash(git branch:*)",
+      "Bash(docker compose:*)", "Bash(pytest:*)", "Bash(ruff:*)", "Bash(mypy:*)",
+      "Bash(npm:*)", "Bash(npx:*)", "Bash(uv:*)", "Bash(pip:*)", "Bash(python:*)",
+      "Bash(alembic:*)", "Bash(ollama:*)", "Bash(curl localhost:*)", "Bash(curl http://localhost:*)",
+      "Bash(ls:*)", "Bash(cat:*)", "Bash(mkdir:*)", "Bash(jq:*)"
+    ],
+    "ask": [
+      "Bash(git push:*)", "Bash(rm -rf:*)", "Bash(docker compose down -v:*)"
+    ],
+    "deny": [
+      "Read(./.env)", "Read(./.env.*)", "Read(./**/.env)",
+      "Bash(curl:*)", "Bash(wget:*)"
+    ]
+  },
+  "hooks": {
+    "SessionStart": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "cd \"$CLAUDE_PROJECT_DIR\" && echo '--- git status ---' && git status --short && echo '--- last commits ---' && git log --oneline -5 2>/dev/null; true"
+          }
+        ]
+      }
+    ],
+    "PostToolUse": [
+      {
+        "matcher": "Edit|Write",
+        "hooks": [
+          { "type": "command", "command": "\"$CLAUDE_PROJECT_DIR\"/.claude/hooks/format.sh", "timeout": 30 }
+        ]
+      }
+    ],
+    "PreToolUse": [
+      {
+        "matcher": "Bash",
+        "hooks": [
+          { "type": "command", "command": "\"$CLAUDE_PROJECT_DIR\"/.claude/hooks/pre-commit-gate.sh", "timeout": 300 }
+        ]
+      }
+    ]
+  }
+}
