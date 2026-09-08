@@ -20,8 +20,8 @@ test:
 	docker compose exec worker pytest -q
 
 lint:
-	docker compose exec api ruff check . && docker compose exec api mypy app
-	docker compose exec worker ruff check . && docker compose exec worker mypy worker
+	docker compose exec api ruff check . && docker compose exec api mypy app tests
+	docker compose exec worker ruff check . && docker compose exec worker mypy worker tests
 	cd web && npx eslint . --max-warnings=0
 
 replay:

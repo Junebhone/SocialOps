@@ -4,7 +4,7 @@
 
 SocialOps gives a marketing manager one dashboard where incoming comments, mentions, and uploaded assets are handled by a team of specialist AI agents, with a human approving anything before it publishes.
 
-> **Status: pre-implementation.** This repository holds the proposal, the build plan, and the design decisions. Phase 1 (the working local app) has not been committed yet.
+> **Status: Phase 1 in progress — step 0 of 10 complete.** The Compose stack builds and runs (postgres, redis, api, worker, web); the data model, agents, and UI are being built step by step per [docs/PROMPTS.md](docs/PROMPTS.md).
 >
 > Start with **[docs/DECISIONS.md](docs/DECISIONS.md)** — every non-obvious technical decision and why. Then [docs/START-HERE.md](docs/START-HERE.md) to set up, and [docs/PROMPTS.md](docs/PROMPTS.md) to build.
 
@@ -135,23 +135,57 @@ Live social platform APIs (X, Meta, TikTok) require paid access or lengthy app r
 
 ## Run it
 
-Phase 1 is not committed yet. Once step 0 lands, this is the loop:
+**Before your first run:** cap Docker Desktop's memory (Settings → Resources → **at least 4 GB**)
+and set `OLLAMA_MAX_LOADED_MODELS=2` and `OLLAMA_KEEP_ALIVE=30m` on the host shell. Two models stay
+resident; without the cap Ollama tries to hold three and evicts mid-replay. See
+[D19](docs/DECISIONS.md).
 
 ```bash
 cp .env.example .env
-make models      # pull qwen3.5:2b and qwen3.5:9b (~9.3 GB)
-make up          # postgres, redis, api, worker, web
-make migrate
-make seed
-make replay      # 300 synthetic comments through the pipeline
+make models      # pull qwen3.5:2b and qwen3.5:9b (~9.3 GB) — one time
+make up          # build and start postgres, redis, api, worker, web
 ```
 
-Then open http://localhost:3000 — Inbox for comment triage and reply approval, Content for
-asset uploads, Agents for the run log and cost.
+That is the whole of step 0. Verify it:
 
-**Before your first run:** cap Docker Desktop's memory (~4 GB) and set `OLLAMA_MAX_LOADED_MODELS=2`
-and `OLLAMA_KEEP_ALIVE=30m` on the host. Two models stay resident; without the cap Ollama tries to
-hold three and evicts mid-replay. See [D19](docs/DECISIONS.md).
+```bash
+docker compose ps                      # five containers, postgres/redis/api healthy
+open http://localhost:8000/health      # {"status":"ok", ...}
+open http://localhost:8000/docs        # OpenAPI
+open http://localhost:3000             # Next.js app
+```
+
+The remaining targets land with the steps that implement them
+([docs/PROMPTS.md](docs/PROMPTS.md)):
+
+| Command | Available after |
+| --- | --- |
+| `make migrate` | Step 1 — models and the initial Alembic migration |
+| `make seed` | Step 2 — two brands, posts, synthetic comments |
+| `make replay` | Step 4 — `POST /ingest/comments`, queue, orchestrator |
+| `make eval` | Step 4.5 — triage accuracy over the 50 labeled comments |
+
+Day-to-day:
+
+```bash
+make test    # pytest in the api and worker containers
+make lint    # ruff + mypy (python), eslint (web)
+make logs    # follow api and worker
+make down
+```
+
+### Ports and services
+
+| Service | Port | Notes |
+| --- | --- | --- |
+| `web` | 3000 | Next.js 15 App Router, Tailwind v4, shadcn/ui |
+| `api` | 8000 | FastAPI, stateless; `/health` and `/docs` |
+| `postgres` | 5432 | Postgres 16 |
+| `redis` | 6379 | Redis 7, arq queue |
+| `worker` | — | arq worker; no published port |
+
+Ollama runs on the **host**, not in Compose — the containers reach it at
+`host.docker.internal:11434`.
 
 ## License
 

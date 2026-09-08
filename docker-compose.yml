@@ -1,0 +1,104 @@
+name: socialops
+
+services:
+  postgres:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-socialops}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-socialops}
+      POSTGRES_DB: ${POSTGRES_DB:-socialops}
+    ports:
+      - "${POSTGRES_PORT:-5432}:5432"
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-socialops} -d ${POSTGRES_DB:-socialops}"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  redis:
+    image: redis:7-alpine
+    ports:
+      - "${REDIS_PORT:-6379}:6379"
+    volumes:
+      - redisdata:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  api:
+    build:
+      context: ./api
+    command: uvicorn app.main:app --host 0.0.0.0 --port 8000 --reload
+    env_file:
+      - .env
+    environment:
+      # Container-internal addresses override whatever .env holds for host-side use.
+      DATABASE_URL: postgresql+asyncpg://${POSTGRES_USER:-socialops}:${POSTGRES_PASSWORD:-socialops}@postgres:5432/${POSTGRES_DB:-socialops}
+      REDIS_URL: redis://redis:6379/0
+      STORAGE_ROOT: /app/storage
+    ports:
+      - "${API_PORT:-8000}:8000"
+    volumes:
+      - ./api:/app
+      - ./data:/app/data
+      - ./storage:/app/storage
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD-SHELL", "python -c \"import urllib.request,sys; sys.exit(0 if urllib.request.urlopen('http://127.0.0.1:8000/health').status==200 else 1)\""]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+      start_period: 20s
+
+  worker:
+    build:
+      context: ./worker
+    command: arq worker.main.WorkerSettings
+    env_file:
+      - .env
+    environment:
+      DATABASE_URL: postgresql+asyncpg://${POSTGRES_USER:-socialops}:${POSTGRES_PASSWORD:-socialops}@postgres:5432/${POSTGRES_DB:-socialops}
+      REDIS_URL: redis://redis:6379/0
+      STORAGE_ROOT: /app/storage
+    volumes:
+      - ./worker:/app
+      - ./data:/app/data
+      - ./storage:/app/storage
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+
+  web:
+    build:
+      context: ./web
+    command: npm run dev -- --hostname 0.0.0.0 --port 3000
+    environment:
+      # Browser-side calls hit the API through the host port mapping, not the compose network.
+      NEXT_PUBLIC_API_URL: ${NEXT_PUBLIC_API_URL:-http://localhost:8000}
+      WATCHPACK_POLLING: "true"
+    ports:
+      - "${WEB_PORT:-3000}:3000"
+    volumes:
+      - ./web:/app
+      - /app/node_modules
+      - /app/.next
+    depends_on:
+      - api
+
+volumes:
+  pgdata:
+  redisdata:

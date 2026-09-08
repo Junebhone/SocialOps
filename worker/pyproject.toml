@@ -1,0 +1,53 @@
+[project]
+name = "socialops-worker"
+version = "0.1.0"
+description = "SocialOps Phase 1 worker — arq jobs, pydantic-graph orchestration, Pydantic AI agents"
+requires-python = ">=3.12"
+dependencies = [
+    # Queue. arq owns retries and the DLQ (hard rule #7) — no second durability layer.
+    "arq>=0.26",
+    # LLM access. Pydantic AI is the only path to a model (hard rule #4); pydantic-graph
+    # is the orchestrator (D12). No litellm, no langgraph.
+    "pydantic-ai>=1.0",
+    "pydantic-graph>=1.0",
+    "sqlalchemy[asyncio]>=2.0.36",
+    "asyncpg>=0.30",
+    "pydantic>=2.9",
+    "pydantic-settings>=2.6",
+    "structlog>=24.4",
+]
+
+[project.optional-dependencies]
+dev = [
+    "pytest>=8.3",
+    "pytest-asyncio>=0.24",
+    "ruff>=0.8",
+    "mypy>=1.13",
+]
+
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[tool.setuptools.packages.find]
+include = ["worker*"]
+
+[tool.ruff]
+line-length = 100
+target-version = "py312"
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "UP", "B", "C4", "SIM"]
+
+[tool.mypy]
+python_version = "3.12"
+plugins = ["pydantic.mypy"]
+warn_unused_ignores = true
+warn_redundant_casts = true
+disallow_untyped_defs = true
+ignore_missing_imports = true
+
+[tool.pytest.ini_options]
+asyncio_mode = "auto"
+testpaths = ["tests"]
+addopts = "-q"
