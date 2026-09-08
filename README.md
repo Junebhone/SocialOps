@@ -4,7 +4,9 @@
 
 SocialOps gives a marketing manager one dashboard where incoming comments, mentions, and uploaded assets are handled by a team of specialist AI agents, with a human approving anything before it publishes.
 
-> **Status: pre-implementation.** This repository currently holds the project proposal and license. Phase 1 (the working local app) has not been committed yet. See [Roadmap](#roadmap) for what is coming.
+> **Status: pre-implementation.** This repository holds the proposal, the build plan, and the design decisions. Phase 1 (the working local app) has not been committed yet.
+>
+> Start with **[docs/DECISIONS.md](docs/DECISIONS.md)** — every non-obvious technical decision and why. Then [docs/START-HERE.md](docs/START-HERE.md) to set up, and [docs/PROMPTS.md](docs/PROMPTS.md) to build.
 
 ---
 
@@ -26,7 +28,7 @@ An **orchestrator** receives every incoming item and routes it to the right spec
 | **Response** | Drafts replies in the brand's voice |
 | **Content** | Turns one uploaded asset into platform-specific posts |
 | **Media** | Analyzes images and video, checks brand guidelines |
-| **Analytics** | Summarizes performance across accounts |
+| **Analytics** | Summarizes performance across accounts *(Phase 2+ — out of scope for Phase 1, see D1)* |
 
 A human reviews and approves agent output before anything is published.
 
@@ -34,7 +36,9 @@ A human reviews and approves agent output before anything is published.
 
 ## Architecture
 
-The application is **deliberately built as a stateful monolith first**, then migrated step by step so that each cloud concept — compute, containers, managed data services, decoupled messaging, orchestration, observability, automation — is exercised against a real workload rather than a toy example.
+The application is built **correctly from the start** — stateless API, containerized worker, queue-backed ingestion — and then **re-platformed** phase by phase onto managed AWS services. Each phase swaps infrastructure underneath an app whose shape does not change: local Postgres becomes RDS, local disk becomes S3, `arq` on Redis becomes SQS, Docker Compose becomes ECS.
+
+This is a deliberate departure from the original proposal, which described Phase 1 as a *stateful monolith* to be re-architected later. Writing throwaway statefulness is real work that produces nothing, so the migration is framed honestly as re-platforming rather than re-architecture. The reasoning is in [D2](docs/DECISIONS.md).
 
 ### Tech stack
 
@@ -42,13 +46,13 @@ The application is **deliberately built as a stateful monolith first**, then mig
 | --- | --- |
 | Front end | React / Next.js dashboard — container → S3 + CloudFront |
 | Application | FastAPI (Python) REST API, containerized |
-| Agent workers | Separate containers behind SQS, autoscaled on queue depth |
+| Agent workers | Separate containers behind `arq`/Redis → SQS, autoscaled on queue depth |
 | Relational data | PostgreSQL — local → Amazon RDS (Multi-AZ) |
 | Object storage | Local disk → EBS → Amazon S3 with lifecycle policies |
 | Messaging | Amazon SQS (with dead-letter queue) |
 | Cache / agent state | Amazon ElastiCache (Redis) |
-| AI | Amazon Bedrock (vision + text), Amazon Rekognition |
-| Orchestration | AWS Step Functions |
+| AI | Pydantic AI over Ollama (local) → Amazon Bedrock (vision + text) |
+| Orchestration | `pydantic-graph` (local) → AWS Step Functions |
 | IaC & CI/CD | Terraform, GitHub Actions |
 
 ### How the workload maps to cloud concepts
@@ -65,10 +69,10 @@ The six-phase migration path, from laptop to fully automated cloud deployment:
 
 | Phase | What gets built | Cloud concepts exercised |
 | --- | --- | --- |
-| **1. Working local app** | Monolithic FastAPI + React app, local Postgres, local file storage, agents running in-process via Docker Compose | Baseline architecture, local dev parity |
-| **2. Platform setup & lift-and-shift** | AWS account, IAM roles, VPC with public/private subnets, security groups; deploy the monolith as-is to an EC2 instance with Postgres and files on the same box | IaaS, networking, IAM, least privilege |
+| **1. Working local app** | FastAPI + Next.js, local Postgres, local file storage, a separate worker container behind a Redis queue, all via Docker Compose | Baseline architecture, local dev parity, queue-backed async |
+| **2. Platform setup & lift-and-shift** | AWS account, IAM roles, VPC with public/private subnets, security groups; deploy the same containers to an EC2 instance with Postgres and files on the same box | IaaS, networking, IAM, least privilege |
 | **3. Containerize & deploy** | Dockerize API, front end, and agent workers; push to ECR; run on ECS (Fargate) behind an Application Load Balancer | Containers, image registry, managed container runtime, load balancing |
-| **4. Decouple state** | Postgres → RDS, files → S3, agent state and sessions → ElastiCache, work items → SQS; app containers become stateless | Managed data services, object storage, caching, message queues, stateless design |
+| **4. Decouple state** | Postgres → RDS, files → S3, Redis → ElastiCache, `arq` → SQS, Ollama → Bedrock; every swap is an env change behind an existing interface | Managed data services, object storage, caching, message queues |
 | **5. Orchestrate & expose** | Split into services (API, orchestrator, triage workers, media workers); autoscale on SQS queue depth; expose via API Gateway + ALB with HTTPS, Route 53, and WAF; agent hand-offs coordinated by Step Functions | Service decomposition, autoscaling, API management, edge security, workflow orchestration |
 | **6. Observe & automate** | CloudWatch dashboards, alarms, and structured logging; X-Ray tracing across agents; Terraform for all infrastructure; GitHub Actions CI/CD; k6 load tests; cost dashboard | Observability, IaC, CI/CD, load testing, FinOps |
 
@@ -84,7 +88,7 @@ Once fully deployed, SocialOps should absorb engagement spikes with no human int
 
 Architecturally, the system should be:
 
-- fully stateless at the compute layer,
+- fully stateless at the compute layer (true from Phase 1, not retrofitted),
 - scaled out and in automatically on queue depth,
 - able to survive an AZ failure, and
 - redeployable from scratch through IaC and CI/CD.
@@ -95,7 +99,9 @@ Architecturally, the system should be:
 
 - The same application runs correctly at every phase of the flow.
 - After Phase 4, the app containers hold no state.
-- Replaying a 2,000-comment viral-post dump triggers visible worker scale-out; the queue drains within a target window, with failures landing in the DLQ.
+- Replaying a 2,000-comment viral-post dump triggers visible worker scale-out and drains within the target window, with failures landing in the DLQ.
+  - Phase 1 reference (one 16 GB laptop, sequential): **300 comments in ~15–20 min**, 2,000 unattended in ~1.5–2 h. Measured numbers replace these estimates in step 9.
+  - The point of the AWS phases is that this number collapses once workers autoscale.
 - Any team member can destroy and recreate the environment with `terraform apply`.
 - A CI pipeline deploys on merge.
 
@@ -118,7 +124,34 @@ Live social platform APIs (X, Meta, TikTok) require paid access or lengthy app r
 | Path | Description |
 | --- | --- |
 | `Project Proposal.pdf` | Full project proposal — domain, problem statement, technical fit, phase mapping, and success criteria |
+| `CLAUDE.md` | Build rules: stack, hard rules, data model, agent contracts |
+| `docs/DECISIONS.md` | **Every technical decision and why.** Read this first. |
+| `docs/decisions/` | ADRs — numbered, one per load-bearing decision |
+| `docs/START-HERE.md` | Setup, prerequisites, and the build loop |
+| `docs/PROMPTS.md` | The ordered build steps |
+| `docs/SETUP.md` | Claude Code tooling: skills, MCP servers, hooks, subagents |
+| `docs/eval.md` | Model accuracy log — updated on every prompt or model change |
 | `LICENSE` | MIT License |
+
+## Run it
+
+Phase 1 is not committed yet. Once step 0 lands, this is the loop:
+
+```bash
+cp .env.example .env
+make models      # pull qwen3.5:2b and qwen3.5:9b (~9.3 GB)
+make up          # postgres, redis, api, worker, web
+make migrate
+make seed
+make replay      # 300 synthetic comments through the pipeline
+```
+
+Then open http://localhost:3000 — Inbox for comment triage and reply approval, Content for
+asset uploads, Agents for the run log and cost.
+
+**Before your first run:** cap Docker Desktop's memory (~4 GB) and set `OLLAMA_MAX_LOADED_MODELS=2`
+and `OLLAMA_KEEP_ALIVE=30m` on the host. Two models stay resident; without the cap Ollama tries to
+hold three and evicts mid-replay. See [D19](docs/DECISIONS.md).
 
 ## License
 
