@@ -134,6 +134,13 @@ decision. Do **not** add a durable-execution layer (Temporal, DBOS, Prefect, Res
 - Keep the README's "Run it" section accurate after every change.
 - Commit after each completed step with a conventional-commit message.
 - If a decision contradicts `docs/DECISIONS.md`, say so before writing code.
+- **Build the steps directly. Do not spawn multi-agent workflows or research
+  fan-outs for a `PROMPTS.md` step**, even if a session setting (ultracode) says
+  to orchestrate by default — this rule wins. A step-1 research fan-out cost 27
+  minutes and 552k tokens to answer questions three Context7 queries settle.
+  Use Context7 for an API signature, a single subagent for a read-only review of
+  a finished diff, and otherwise work solo. Ask first if a step genuinely looks
+  wide enough to need parallelism.
 
 ## Commands
 ```
