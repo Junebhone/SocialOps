@@ -225,6 +225,50 @@ Phase 2+ actually changes — is in
 [docs/architecture-phase1.md](docs/architecture-phase1.md). The two pipeline
 diagrams there are generated from the `pydantic-graph` definitions, not drawn.
 
+### Measured
+
+Real numbers from `make measure`, on one 16 GB Apple Silicon laptop with Ollama
+on the host. These replace the estimates the success criteria used to carry.
+
+#### replay (300 comments) — 2026-09-09
+
+- **52.3 min** wall time, first to last recorded run
+- **485** agent runs, **337,278** tokens (323,176 in / 14,102 out)
+- **10.5 s per comment** end to end
+- 0 dead-lettered, 0 errors
+
+| Agent | Runs | Tokens in | Tokens out | p50 | p95 |
+|---|---:|---:|---:|---:|---:|
+| triage | 301 | 207,277 | 6,468 | 4,240 ms | 14,295 ms |
+| response | 184 | 115,899 | 7,634 | 11,875 ms | 28,849 ms |
+
+Cost is `$0.00` throughout: Ollama runs on hardware we already own, which is a
+different fact from "we could not price it" ([D15]).
+
+Read these as a **conservative** upper bound. The machine was compiling, linting
+and running the test suite throughout — triage p50 measured 4.2 s here against
+the ~850 ms [D23] recorded for an unloaded call, and 184 response calls on a
+9B model is where the wall time actually goes. `replay-full` is 2,000 comments;
+at this rate expect **5–6 hours**, not the "~1h+" the Makefile used to claim.
+Run it with `make measure-full`, after raising the Docker disk limit.
+
+#### What the replay found
+
+Two things, which is what a load replay is for:
+
+- **301 triage runs for 300 comments.** One comment was processed twice, and it
+  produced a second reply draft — at which point `GET /comments/{id}` returned
+  **500**, because it reads the draft with `scalar_one_or_none()`. The
+  orchestrator's idempotency guard was check-then-act, so two overlapping
+  attempts could both read `new`. `Ingest` now takes a row lock on the comment,
+  and `reply_drafts` has `UNIQUE(comment_id)` as a backstop. Both are tested,
+  including that the second attempt does not re-spend the model calls.
+- **Ingest rejected the whole batch on one bad row** ([D27]). `replay-full`
+  returned 422 and inserted nothing at all, which would have made the unattended
+  run pointless.
+
+[D27]: docs/DECISIONS.md
+
 ### Switching LLM provider
 
 Nothing in `worker/agents/` names a model. Agents declare a **tier**, and

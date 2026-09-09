@@ -7,6 +7,7 @@ replay. That is exactly how the duplicate-draft bug reached the database.
 
 from __future__ import annotations
 
+import asyncio
 from datetime import UTC, datetime
 from pathlib import Path
 
@@ -15,7 +16,8 @@ from app.models import AgentRun, Brand, Comment, PlatformAccount, Post, ReplyDra
 from pydantic_ai import ModelMessage, ModelResponse, TextPart
 from pydantic_ai.models.function import AgentInfo, FunctionModel
 from sqlalchemy import select
-from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy.exc import IntegrityError
+from sqlalchemy.ext.asyncio import AsyncEngine, AsyncSession, async_sessionmaker
 
 from worker import llm
 from worker.orchestrator import run_comment
@@ -175,3 +177,62 @@ async def test_the_brands_avoid_words_reach_the_response_prompt(
     await run_comment(comment.id, db)
 
     assert "cheap, guys" in seen[1]
+
+
+async def test_two_overlapping_attempts_produce_one_draft(
+    db: AsyncSession, worker_engine: AsyncEngine, prompts: None, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """The bug the 300-comment replay found.
+
+    `Ingest`'s guard was check-then-act: two attempts at the same comment could
+    both read `new`, both triage it and both write a draft. It happened once in
+    300 — comment 242 — and `GET /comments/242` then returned 500, because that
+    endpoint reads the draft with `scalar_one_or_none()`.
+
+    Two things close it, and this exercises both: the guard now takes a row lock
+    on the comment, so the second transaction waits and then sees `drafted`; and
+    `UNIQUE(comment_id)` is the backstop that turns the same race into a loud
+    failure rather than a silent duplicate.
+    """
+    comment = await _a_comment(db)
+    await db.commit()
+
+    calls: list[str] = []
+
+    def counting(messages: list[ModelMessage], info: AgentInfo) -> ModelResponse:
+        calls.append("call")
+        return ModelResponse(parts=[TextPart(TRIAGE_REPLY if len(calls) == 1 else RESPONSE)])
+
+    monkeypatch.setattr(llm, "_build_model", lambda s, t: FunctionModel(counting))
+    factory = async_sessionmaker(worker_engine, expire_on_commit=False)
+
+    async def attempt() -> None:
+        async with factory() as session:
+            try:
+                await run_comment(comment.id, session)
+                await session.commit()
+            except Exception:
+                await session.rollback()
+
+    await asyncio.gather(attempt(), attempt())
+
+    async with factory() as checking:
+        assert len((await checking.execute(select(ReplyDraft))).scalars().all()) == 1
+
+    # Two model calls, not four. This is what separates the row lock from the
+    # constraint: the constraint alone would let the second attempt triage and
+    # draft the comment all over again — paying for both calls — before failing
+    # on the insert. The lock makes it wait, see `drafted`, and stop.
+    assert len(calls) == 2
+
+
+async def test_the_database_refuses_a_second_draft(db: AsyncSession) -> None:
+    """The backstop on its own. Even if a future change loses the lock, the
+    constraint keeps `GET /comments/{id}` from 500ing."""
+    comment = await _a_comment(db)
+    db.add(ReplyDraft(comment_id=comment.id, text="first", status="pending"))
+    await db.commit()
+
+    db.add(ReplyDraft(comment_id=comment.id, text="second", status="pending"))
+    with pytest.raises(IntegrityError):
+        await db.commit()

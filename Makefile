@@ -28,7 +28,9 @@ replay:
 	curl -s -X POST -H "Content-Type: application/json" \
 	  --data @data/comments_small.json http://localhost:8000/ingest/comments | jq .
 
-# 2,000 comments. Unattended: expect ~1h+. Stop the web container first to free memory.
+# 2,000 comments. Unattended: measured ~10.5s per comment on one laptop, so
+# expect 5-6 hours, not the hour originally estimated. Stop the web container
+# first to free memory, and check `docker system df` (D19).
 
 replay-full:
 	curl -s -X POST -H "Content-Type: application/json" \
@@ -43,8 +45,9 @@ eval:
 measure:
 	python3 scripts/measure.py data/comments_small.json --label "replay (300 comments)"
 
-# Unattended: expect 1.5-2h. Stop the web container first to free memory, and
-# check `docker system df` — the default 8 GB Docker disk is not enough (D19).
+# Unattended: 5-6 hours at the measured 10.5s per comment. Stop the web
+# container first, and check `docker system df` — the default 8 GB Docker disk
+# is not enough (D19).
 measure-full:
 	python3 scripts/measure.py data/viral_post_dump.json --label "replay-full (2,000 comments)"
 

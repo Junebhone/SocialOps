@@ -76,7 +76,7 @@ posts(id, account_id, external_id, text, posted_at, metrics_json)
 comments(id, post_id, external_id, author, text, created_at, category, sentiment,
          needs_reply, status)                          UNIQUE(post_id, external_id)
 reply_drafts(id, comment_id, text, agent_run_id, status[pending|approved|rejected|published],
-             final_text, approved_by, approved_at)
+             final_text, approved_by, approved_at)     UNIQUE(comment_id)  -- D29
 outbox(id, reply_draft_id, payload_json, created_at, sent_at)
 assets(id, brand_id, filename, storage_key, mime, analysis_json)
 content_drafts(id, asset_id, platform, text, hashtags_json, agent_run_id, status)

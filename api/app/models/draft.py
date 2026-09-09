@@ -11,6 +11,7 @@ from sqlalchemy import (
     Index,
     String,
     Text,
+    UniqueConstraint,
     func,
 )
 from sqlalchemy.dialects.postgresql import JSONB
@@ -24,7 +25,17 @@ class ReplyDraft(Base):
     __tablename__ = "reply_drafts"
     __table_args__ = (
         CheckConstraint(sql_in("status", DraftStatus), name="status_allowed"),
-        Index(None, "comment_id"),
+        # One draft per comment, enforced by the database rather than assumed.
+        #
+        # The code already assumed it — `GET /comments/{id}` calls
+        # `scalar_one_or_none()` on this table, and `CommentWithDraft.draft` is
+        # singular — and a 300-comment replay produced a second draft for one
+        # comment (1 in 300), at which point that endpoint returned 500 and the
+        # Inbox listed the comment twice. The orchestrator's `Ingest` guard is
+        # check-then-act, so two overlapping attempts can both read `new`; that
+        # guard now takes a row lock, and this constraint is the backstop that
+        # makes the failure loud instead of silent.
+        UniqueConstraint("comment_id", name="one_draft_per_comment"),
         Index(None, "status"),
     )
 

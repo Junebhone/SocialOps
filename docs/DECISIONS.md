@@ -791,6 +791,45 @@ called for) · step 10 in `PROMPTS.md`.
 
 ---
 
+## D29 — The idempotency guard needs a row lock, not just a read · `SETTLED`
+
+**Decision:** `Ingest` selects the comment `FOR UPDATE OF comments`, and `reply_drafts` gains
+`UNIQUE(comment_id)`.
+
+**Why — found by the load replay, which is what step 9 is for.** A clean 300-comment run produced
+**301 triage runs**: comment 242 was triaged, drafted, and then triaged and drafted *again*
+sixteen minutes later, and both attempts committed. The result was two `reply_drafts` rows for one
+comment, and `GET /comments/242` then returned **500** — that endpoint reads the draft with
+`scalar_one_or_none()`, and `CommentWithDraft.draft` is singular, so the code had always assumed
+one draft per comment without anything enforcing it. The Inbox listed the comment twice for the
+same reason.
+
+The guard added in step 4 (`if comment.status in COMPLETED_STATUSES: return End`) is
+**check-then-act**. It closes the common case — a retry that starts after the first attempt
+committed — and nothing more. Two attempts whose transactions overlap both read `new`, and both
+proceed. D9's job key prevents a *duplicate enqueue*; it does not prevent a retry from overlapping
+the attempt it is retrying.
+
+**Why both fixes and not one.** The row lock is the correctness fix: the second transaction blocks
+at the SELECT, and by the time it reads, the status is `drafted`, so it exits having spent **no
+model calls**. The constraint alone would let it triage and draft all over again — paying for both
+calls — before failing on the insert. But the constraint still earns its place as the backstop: it
+is what turns this class of race from a silent duplicate that 500s an endpoint into a failed job
+with a visible error, and it makes an assumption the API already relied on into something the
+database guarantees. The concurrency test asserts **two model calls, not four**, which is what
+separates the two.
+
+`of=Comment` locks only the comment row. Locking the brand join too would serialise every job in a
+replay behind a single brand row.
+
+**Rate observed:** 1 in 300. Small enough to be invisible in the demo, large enough that
+`replay-full` at 2,000 comments would be expected to produce several.
+
+**Touches:** `worker/orchestrator.py` · `api/app/models/draft.py` · a new migration ·
+`CLAUDE.md` data model (`reply_drafts` is now one-per-comment by constraint).
+
+---
+
 ## Standing assumptions
 
 | # | Assumption | Revisit when |

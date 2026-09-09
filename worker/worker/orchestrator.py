@@ -261,6 +261,17 @@ class Ingest(BaseNode[CommentState, None, int]):
                 .join(PlatformAccount, Post.account_id == PlatformAccount.id)
                 .join(Brand, PlatformAccount.brand_id == Brand.id)
                 .where(Comment.id == state.comment_id)
+                # Lock the comment row for the life of this transaction.
+                #
+                # Without it the guard below is check-then-act: two attempts at
+                # the same comment can both read `new` and both go on to draft a
+                # reply. Measured on a 300-comment replay — comment 242 was
+                # triaged and drafted twice, `GET /comments/242` then returned
+                # 500, and the Inbox listed it twice. `of=Comment` locks only
+                # the comment; the brand join is read-only and must not be
+                # locked, or every job in the replay would serialise behind one
+                # brand row.
+                .with_for_update(of=Comment)
             )
         ).first()
 
