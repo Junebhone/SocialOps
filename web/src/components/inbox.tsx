@@ -1,7 +1,7 @@
 "use client";
 
 import { useSearchParams } from "next/navigation";
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 
 import { CategoryBadge, DraftStatusBadge, SentimentBadge, UrgencyBadge } from "@/components/badges";
 import { Button } from "@/components/ui/button";
@@ -29,13 +29,27 @@ export function Inbox() {
   const [editing, setEditing] = useState<number | null>(null);
   const [editText, setEditText] = useState("");
 
+  // Bumped on every load; a response that is not the newest is dropped.
+  //
+  // Three things call `load` — the brand/filter effect, a 5s poll, and every
+  // approve/reject — so several requests are routinely in flight at once, and
+  // fetch gives no ordering guarantee. Switching brand while a slow request is
+  // outstanding let the older response land last and paint ANOTHER BRAND'S
+  // comments into the table, which is precisely the failure D17 made brand_id
+  // required to prevent.
+  const generation = useRef(0);
+
   const load = useCallback(async () => {
     if (!brandId) return;
+    const mine = ++generation.current;
     try {
       const status = FILTERS.find((f) => f.key === filter)?.status;
-      setComments(await api.comments(brandId, status ? { status } : {}));
+      const rows = await api.comments(brandId, status ? { status } : {});
+      if (mine !== generation.current) return;
+      setComments(rows);
       setError(null);
     } catch (err) {
+      if (mine !== generation.current) return;
       setError((err as Error).message);
     }
   }, [brandId, filter]);
@@ -48,10 +62,18 @@ export function Inbox() {
 
   // The worker is still draining while someone reads this page, so refresh
   // rather than leaving a stale table that quietly stops matching the queue.
+  //
+  // Suspended while a draft is open in the textarea: the refresh re-renders the
+  // row under the cursor, and a status that changed server-side swaps the edit
+  // controls out from under a half-typed reply. Suspended in a hidden tab for
+  // the same reason as the queue meter — step 9 measures this API under load.
   useEffect(() => {
-    const timer = setInterval(() => void load(), 5000);
+    if (editing !== null) return;
+    const timer = setInterval(() => {
+      if (!document.hidden) void load();
+    }, 5000);
     return () => clearInterval(timer);
-  }, [load]);
+  }, [load, editing]);
 
   const pending = (comments ?? []).filter((c) => c.draft?.status === "pending");
   const selectable = pending.map((c) => c.draft!.id);

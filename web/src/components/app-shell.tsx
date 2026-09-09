@@ -30,18 +30,34 @@ export function AppShell({ children }: { children: React.ReactNode }) {
   const [brands, setBrands] = useState<Brand[] | null>(null);
   const [error, setError] = useState<string | null>(null);
 
+  // Load the brand list once. The previous dependency list was
+  // [brandId, pathname, router], so this re-fetched on every navigation AND on
+  // every brand switch — and because the response resets `brands` to null-then-
+  // rows, the selector in the top bar dropped back to its loading skeleton each
+  // time. The list changes only when someone re-seeds the database.
   useEffect(() => {
+    let cancelled = false;
     api
       .brands()
       .then((rows) => {
-        setBrands(rows);
-        // Land on a brand rather than an empty page; the URL then carries it.
-        if (!brandId && rows.length > 0) {
-          router.replace(`${pathname}?brand_id=${rows[0].id}`);
-        }
+        if (!cancelled) setBrands(rows);
       })
-      .catch((err: Error) => setError(err.message));
-  }, [brandId, pathname, router]);
+      .catch((err: Error) => {
+        if (!cancelled) setError(err.message);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  // Land on a brand rather than an empty page; the URL then carries it (D17).
+  // Separate from the fetch because it has to re-run when the URL changes,
+  // and the fetch must not.
+  useEffect(() => {
+    if (!brandId && brands && brands.length > 0) {
+      router.replace(`${pathname}?brand_id=${brands[0].id}`);
+    }
+  }, [brandId, brands, pathname, router]);
 
   return (
     <div className="flex min-h-screen">
@@ -107,22 +123,35 @@ function QueueMeter() {
 
   useEffect(() => {
     let cancelled = false;
-    const tick = () =>
-      api
-        .queueStats()
-        .then((next) => {
-          if (!cancelled) {
-            setStats(next);
-            setStale(false);
-          }
-        })
-        .catch(() => !cancelled && setStale(true));
 
-    tick();
-    const timer = setInterval(tick, 2000);
+    const tick = async () => {
+      // Nobody is reading the number in a backgrounded tab, and step 9 measures
+      // the API's latency under a 2,000-comment replay. Thirty requests a
+      // minute from every tab left open is load inside the measurement.
+      if (document.hidden) return;
+      try {
+        const next = await api.queueStats();
+        if (cancelled) return;
+        setStats(next);
+        setStale(false);
+      } catch {
+        // Dimmed rather than replaced: a dropped poll during a replay is
+        // routine, and blanking the counts looks like the queue emptied.
+        if (!cancelled) setStale(true);
+      }
+    };
+
+    const poll = () => void tick();
+
+    poll();
+    const timer = setInterval(poll, 2000);
+    // Catch up the moment the tab comes back instead of showing a count that
+    // has been frozen for as long as it was hidden.
+    document.addEventListener("visibilitychange", poll);
     return () => {
       cancelled = true;
       clearInterval(timer);
+      document.removeEventListener("visibilitychange", poll);
     };
   }, []);
 

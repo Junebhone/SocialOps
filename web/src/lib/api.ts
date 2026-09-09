@@ -48,11 +48,34 @@ export interface QueueStats {
 
 /** Throws with the API's own message so callers can render it inline. */
 async function request<T>(path: string, init?: RequestInit): Promise<T> {
-  const response = await fetch(`${BASE}${path}`, {
-    ...init,
-    headers: { "Content-Type": "application/json", ...(init?.headers ?? {}) },
-    cache: "no-store",
-  });
+  // Next inlines NEXT_PUBLIC_* at build time, so an unset variable becomes the
+  // literal string "undefined" and `${BASE}${path}` turns into a RELATIVE url:
+  // the browser resolves "undefined/brands" against the Next dev server and
+  // gets its 404 page. The symptom is then an inline error reading
+  // "404: <!DOCTYPE html>...", which sends you looking at the API. Named here
+  // instead, at the one place every call passes through.
+  if (!BASE) {
+    throw new Error(
+      "NEXT_PUBLIC_API_URL is not set. It is the browser's address for the API " +
+        "(the browser cannot resolve the compose service name), and compose reads " +
+        "it from .env.",
+    );
+  }
+
+  let response: Response;
+  try {
+    response = await fetch(`${BASE}${path}`, {
+      ...init,
+      headers: { "Content-Type": "application/json", ...(init?.headers ?? {}) },
+      cache: "no-store",
+    });
+  } catch (cause) {
+    // fetch rejects with a bare "Failed to fetch" for DNS, connection refused,
+    // CORS and an offline tab alike. Rendering that verbatim in the top bar
+    // tells a marketing manager nothing; the address does.
+    throw new Error(`Cannot reach the API at ${BASE}.`, { cause });
+  }
+
   if (!response.ok) {
     const body = await response.text();
     throw new Error(body ? `${response.status}: ${body.slice(0, 200)}` : `${response.status}`);
