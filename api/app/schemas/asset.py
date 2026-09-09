@@ -26,6 +26,10 @@ class AssetRead(ORMModel):
     storage_key: str
     mime: str
     analysis_json: AssetAnalysis | None = None
+    # Not a column: whatever `StorageBackend.url()` returns for the key. It is
+    # the API route today and a presigned S3 URL in Phase 4, and the web app is
+    # never told which — that is the whole point of hard rule #9's interface.
+    url: str
 
 
 class ContentDraftRead(ORMModel):

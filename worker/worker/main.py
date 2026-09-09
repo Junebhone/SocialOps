@@ -1,8 +1,8 @@
 """arq worker entry point.
 
-One job type in step 4: `process_comment`. It owns a session, runs the
-orchestrator graph, and — only after arq has exhausted its retries — records the
-failure in `failed_jobs`.
+Two job types, one shape: `process_comment` and `process_asset`. Each owns a
+session, runs its orchestrator graph, and — only after arq has exhausted its
+retries — records the failure in `failed_jobs`.
 
 `max_tries = 3` is the only retry mechanism in the system (hard rule #7, D12).
 There is deliberately no second one: two retry layers on one job means
@@ -21,7 +21,7 @@ from sqlalchemy import select
 from worker.config import get_settings
 from worker.db import create_engine_and_sessionmaker, session_scope
 from worker.logging import bind_job_context, configure_logging
-from worker.orchestrator import run_comment
+from worker.orchestrator import run_asset, run_comment
 
 configure_logging()
 
@@ -50,34 +50,60 @@ async def process_comment(ctx: dict[str, Any], comment_id: int) -> str:
             state = await run_comment(comment_id, session)
         return f"comment {comment_id} processed by {', '.join(state.agents_run)}"
     except Exception as exc:
-        attempt = int(ctx.get("job_try", 1))
-        log.error(
-            "job.failed",
-            job_type="process_comment",
-            comment_id=comment_id,
-            attempt=attempt,
-            error=str(exc),
-        )
-        if attempt >= MAX_TRIES:
-            await _record_failure(factory, comment_id, exc, attempt)
+        await _handle_failure(ctx, "process_comment", {"comment_id": comment_id}, exc)
         raise
 
 
+async def process_asset(ctx: dict[str, Any], asset_id: int) -> str:
+    """Run one uploaded image through the asset graph.
+
+    Deliberately the same shape as `process_comment`, down to the failure
+    handling. Two job types that differ only in which graph they call is what
+    keeps the DLQ, the Retry button and step 9's measurements uniform across
+    both paths instead of needing a second version of each.
+    """
+    bind_job_context(ctx)
+    factory = ctx["session_factory"]
+
+    try:
+        async with session_scope(factory) as session:
+            state = await run_asset(asset_id, session)
+        return f"asset {asset_id} processed by {', '.join(state.agents_run)}"
+    except Exception as exc:
+        await _handle_failure(ctx, "process_asset", {"asset_id": asset_id}, exc)
+        raise
+
+
+async def _handle_failure(
+    ctx: dict[str, Any], job_type: str, payload: dict[str, Any], exc: Exception
+) -> None:
+    """Log every attempt; dead-letter only the last one.
+
+    Writing a `failed_jobs` row per attempt would put three rows in the DLQ for
+    one comment and make the Agents page's failed count triple the real number
+    of broken jobs.
+    """
+    attempt = int(ctx.get("job_try", 1))
+    log.error("job.failed", job_type=job_type, attempt=attempt, error=str(exc), **payload)
+    if attempt >= MAX_TRIES:
+        await _record_failure(ctx["session_factory"], job_type, payload, exc, attempt)
+
+
 async def _record_failure(
-    factory: Any, comment_id: int, exc: Exception, attempts: int
+    factory: Any, job_type: str, payload: dict[str, Any], exc: Exception, attempts: int
 ) -> None:
     """The DLQ (hard rule #7). Payload must be enough to re-enqueue: step 9 adds
     a Retry button that reads exactly this row."""
     async with session_scope(factory) as session:
         session.add(
             FailedJob(
-                job_type="process_comment",
-                payload_json={"comment_id": comment_id},
+                job_type=job_type,
+                payload_json=payload,
                 error=f"{type(exc).__name__}: {exc}",
                 attempts=attempts,
             )
         )
-    log.error("job.dead_lettered", comment_id=comment_id, attempts=attempts)
+    log.error("job.dead_lettered", job_type=job_type, attempts=attempts, **payload)
 
 
 async def drain_outbox(ctx: dict[str, Any]) -> str:
@@ -172,13 +198,15 @@ class WorkerSettings:
 
     # drain_outbox stays registered so it can also be triggered by hand, but the
     # periodic run is the asyncio loop started in `startup`, not a cron job.
-    functions = [process_comment, drain_outbox, ping]
+    functions = [process_comment, process_asset, drain_outbox, ping]
     on_startup = startup
     on_shutdown = shutdown
     redis_settings = RedisSettings.from_dsn(get_settings().redis_url)
     max_tries = MAX_TRIES
-    # A comment needs one fast call and sometimes one standard call. 300s leaves
-    # room for a cold model load on the first job after an idle gap.
+    # A comment needs one fast call and sometimes one standard call; an asset
+    # needs a vision call and a standard call. 300s leaves room for a cold model
+    # load on the first job after an idle gap, which is the slowest thing either
+    # path can hit.
     job_timeout = 300
     # Two slots, not one. One is the honest setting for LLM work — the machine
     # is memory-bandwidth-bound on a 9B model, so concurrency buys no throughput

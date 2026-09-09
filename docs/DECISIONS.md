@@ -593,6 +593,98 @@ all, not because it was judged unhelpful.
 
 ---
 
+## D24 — The api package owns the shared schema; the worker copies it · `SETTLED (written up late)`
+
+**Decision:** SQLAlchemy models are defined once, in `api/app/models/`. The worker's Dockerfile
+copies `api/app` to `/opt/api/app` and puts it on `PYTHONPATH`; `worker/worker/db.py` builds only
+an engine. The worker does not define, and does not migrate, any table.
+
+**Why:** The orchestrator writes `comments`, `reply_drafts`, `agent_runs` and `content_drafts`, so
+it needs the models. The alternatives were a duplicate set of model classes in the worker, or a
+third installable package on both images' `PYTHONPATH`. Duplication is the worse of the two by a
+wide margin: two definitions of `comments` drift, and the definition that drifts silently is the
+one only a replay exercises — you find out an hour into an unattended 2,000-comment run. A shared
+package is defensible but is real packaging work (a third `pyproject.toml`, a third build stage,
+a version to keep in step) in service of a boundary that does not exist yet. Copying is one
+`COPY` line and it is honest about what is happening: the api is the schema's owner.
+
+**Consequence:** Alembic lives only in the api, so `make migrate` has exactly one place to run
+from. The copy is baked into the image rather than bind-mounted, so the worker still runs on ECS
+in Phase 3 where there are no host mounts; compose additionally mounts it read-only for dev
+hot-reload.
+
+**Bookkeeping.** This entry is written up after the fact. `worker/Dockerfile`,
+`docker-compose.yml` and `worker/worker/db.py` have cited "D24" since step 4 for a decision that
+was never recorded here — the reasoning was in the code comments and nowhere else.
+`docs/eval.md` also cited D24, but for something different (the fast-vs-standard tier trade-off);
+that arithmetic is D4's, and the reference has been corrected.
+
+**Touches:** `CLAUDE.md` repo layout (the worker's use of `app.models` is not shown there).
+
+---
+
+## D25 — Storage is one async interface, owned by the api package · `SETTLED`
+
+**Decision:** `StorageBackend` and `LocalDiskStorage` live in `api/app/storage.py` and reach the
+worker through D24's copy. `worker/worker/storage.py` re-exports them and adds `get_storage()`,
+which resolves the *worker's* own `STORAGE_BACKEND` / `STORAGE_ROOT` (D22). The four methods are
+hard rule #9's exactly: `put`, `get`, `url`, `delete`. Three are `async`; `url` is not.
+
+**Why here and not `worker/storage.py` alone,** which is where `CLAUDE.md`'s layout and step 6 both
+put it: both services touch the same bytes. The API writes an upload, the worker reads it back to
+send to the vision model. Two implementations of "what does a `storage_key` mean on disk" is the
+same drift D24 rejected for models, except worse — the media path runs once per demo, so a
+mismatch is found on stage rather than in a replay.
+
+**Why async when local disk does not need it:** the entire purpose of the interface is that Phase 4
+changes no call sites. S3 is network I/O. A sync interface today means editing every caller later,
+which is precisely the cost hard rule #9 exists to avoid. `LocalDiskStorage` uses
+`asyncio.to_thread` — stdlib, no new dependency. `url()` stays sync because neither backend does
+I/O to produce one; presigning is local computation.
+
+**Two consequences worth naming:**
+
+* `url()` returns an API route (`/assets/file/<key>`) under local disk, because a directory has no
+  address a browser can reach. That is the one place the storage layer knows an API route exists,
+  and the constant is shared with the router so they cannot drift. In Phase 4 it returns a
+  presigned URL and the route stops being called. The web app never learns which backend it is —
+  it renders whatever `url` the API gave it.
+* The FastAPI dependency (`StorageDep`) is deliberately **not** in `app/storage.py`. The worker
+  imports that module and has no FastAPI, so a `from fastapi import Depends` at its top would break
+  the worker at import. Framework wiring lives in `app/routers/params.py`; the backend stays plain.
+
+**Touches:** `CLAUDE.md` repo layout and hard rule #9 · step 6 in `PROMPTS.md`.
+
+---
+
+## D26 — The content agent's contract is enforced twice, in two different ways · `SETTLED`
+
+**Decision:** "One draft per platform" is a Pydantic validator on `ContentOutput`, so a wrong shape
+is **retried**. "No more than `max_hashtags`" is a trim at persist time, so an overshoot is
+**clamped**. The `agent_runs` row keeps the model's raw output either way.
+
+**Why not both the same way:** they are different kinds of wrong. A response with two Instagram
+captions and no LinkedIn one is *malformed* — the Content page puts three drafts side by side and
+would render a blank column — and a malformed response is exactly what Pydantic AI's retry loop
+(`retries=3`, hard rule #4) exists to fix, with the validation error handed back to the model as
+the correction. Seven hashtags where the brand allows five is *correct output that breaks a
+brand rule*: the captions are fine, and burning two more 9B calls to re-roll them would cost
+seconds of demo time to fix something a slice fixes for free.
+
+**Why clamping is not silent data loss:** hard rule #5 already requires the full model output in
+`agent_runs.output_json`, so the audit trail shows what was actually returned while the stored
+draft obeys the brand. The trim is logged with the returned and kept counts. Reviewers see the
+draft; the Agents page can still show the model overshooting, which is the signal that
+`prompts/content.md` needs work.
+
+**Rejected — enforcing `max_hashtags` in the schema.** It is per-brand (D16), so it cannot be a
+static `Field` constraint, and threading a runtime limit into the output model to make the
+framework retry on it would turn one brand's stricter rule into a retry storm on a 9B model.
+
+**Touches:** step 6 in `PROMPTS.md` · the `agent-prompts` skill (the content contract).
+
+---
+
 ## Standing assumptions
 
 | # | Assumption | Revisit when |

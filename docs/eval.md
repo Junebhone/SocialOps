@@ -25,7 +25,7 @@ real figure — 96% was luck.
 
 `fast` is **8 points behind** on category accuracy and more than twice as far off on sentiment.
 D4 set the trigger at "more than a few points", so this is the signal it described. The
-trade-off is not one-sided, and the arithmetic is in D24.
+trade-off is not one-sided, and the arithmetic is in D4.
 
 ## Why this table exists
 The `fast` tier runs triage on a 2B model to keep the 2,000-comment replay inside a usable window

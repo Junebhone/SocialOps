@@ -17,7 +17,7 @@ from typing import ClassVar
 from pydantic import BaseModel
 
 from worker.config import Tier
-from worker.llm import Usage, complete
+from worker.llm import PromptImage, Usage, complete
 
 
 class BaseAgent[InputT: BaseModel, OutputT: BaseModel](ABC):
@@ -40,8 +40,13 @@ class BaseAgent[InputT: BaseModel, OutputT: BaseModel](ABC):
         """Values for the prompt's `{{placeholders}}`. Input fields by default."""
         return payload.model_dump()
 
-    def images(self, payload: InputT) -> list[bytes] | None:
-        """Image bytes for a vision-tier agent. None for text agents."""
+    def images(self, payload: InputT) -> list[PromptImage] | None:
+        """Images for a vision-tier agent. None for text agents.
+
+        Cheap by contract: the orchestrator node has already decoded, rotated
+        and downscaled the bytes. Doing that work here would put it inside the
+        window `complete()` times, and latency per agent is a step 9 deliverable.
+        """
         return None
 
     async def run_with_usage(self, payload: InputT) -> tuple[OutputT, Usage]:

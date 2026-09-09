@@ -41,6 +41,24 @@ _BARE_JSON = re.compile(r"(\{.*\}|\[.*\])", re.DOTALL)
 
 
 @dataclass(frozen=True)
+class PromptImage:
+    """One image attached to a prompt, with the media type the model is told.
+
+    The media type travels with the bytes rather than being assumed. An earlier
+    version hardcoded `image/png` here, which meant a JPEG upload was announced
+    as a PNG — Ollama happens to sniff the magic bytes and cope, but Bedrock
+    does not, so it would have been a Phase 4 bug planted in Phase 1. It also
+    forced `images.py` to re-encode every photo as PNG to keep the lie true,
+    inflating a 1024px product shot from ~150 KB to ~1.5 MB of base64 in the
+    request body.
+    """
+
+    data: bytes
+    # `image/png` or `image/jpeg` — what Pydantic AI passes to BinaryContent.
+    media_type: str
+
+
+@dataclass(frozen=True)
 class Usage:
     """What `agent_runs` records for one invocation."""
 
@@ -197,7 +215,7 @@ async def complete[OutputT: BaseModel](
     variables: dict[str, Any],
     schema: type[OutputT],
     tier: Tier,
-    images: list[bytes] | None = None,
+    images: list[PromptImage] | None = None,
 ) -> tuple[OutputT, Usage]:
     """Run one model call and return the parsed output with its usage."""
     settings = get_settings()
@@ -215,9 +233,18 @@ async def complete[OutputT: BaseModel](
 
     user_prompt: str | list[Any] = prompt
     if images:
-        attachments = [BinaryContent(data=image, media_type="image/png") for image in images]
+        # Text first, then the images: Pydantic AI passes the list through as
+        # ordered user content, and a vision model reads the instruction better
+        # when it arrives before the thing it is about.
+        attachments = [
+            BinaryContent(data=image.data, media_type=image.media_type) for image in images
+        ]
         user_prompt = [prompt, *attachments]
 
+    # Timed around the model call only. Anything expensive done to the input —
+    # downscaling in particular — happens in the orchestrator node before this
+    # point, so the latency step 9 records is model time and not our own image
+    # processing.
     started = time.perf_counter()
     result = await agent.run(user_prompt)
     latency_ms = int((time.perf_counter() - started) * 1000)

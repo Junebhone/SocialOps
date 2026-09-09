@@ -13,6 +13,9 @@ real `alembic upgrade head` rather than `Base.metadata.create_all`, which means
 import os
 import subprocess
 from collections.abc import AsyncIterator
+from contextlib import asynccontextmanager
+from types import SimpleNamespace
+from typing import Any
 
 import pytest
 from httpx import ASGITransport, AsyncClient
@@ -48,6 +51,7 @@ for _key, _value in _TEST_ENV.items():
 from app.db import get_session  # noqa: E402
 from app.main import app  # noqa: E402
 from app.models import Base  # noqa: E402
+from app.services import queue as queue_service  # noqa: E402
 
 
 def _test_database_url() -> str:
@@ -104,6 +108,59 @@ async def session(
 ) -> AsyncIterator[AsyncSession]:
     async with session_factory() as db_session:
         yield db_session
+
+
+class FakeQueue:
+    """Records enqueues instead of performing them.
+
+    It honours arq's job-key dedupe — a repeated `_job_id` returns None — because
+    that dedupe IS D9's idempotency mechanism, and a stub that accepted
+    everything would make "replaying costs nothing" untestable.
+    """
+
+    def __init__(self) -> None:
+        self.jobs: dict[str, tuple[str, tuple[Any, ...]]] = {}
+
+    async def enqueue_job(
+        self, function: str, *args: Any, _job_id: str | None = None, **kwargs: Any
+    ) -> object | None:
+        key = _job_id or f"{function}:{len(self.jobs)}"
+        if key in self.jobs:
+            return None
+        self.jobs[key] = (function, args)
+        return SimpleNamespace(job_id=key)
+
+    async def zcard(self, key: str) -> int:
+        return len(self.jobs)
+
+    async def keys(self, pattern: str) -> list[str]:
+        return []
+
+
+@pytest.fixture(autouse=True)
+def queue(monkeypatch: pytest.MonkeyPatch) -> FakeQueue:
+    """No test may enqueue a real job.
+
+    Autouse, and not optional. The suite runs against `socialops_test`, but
+    Redis is shared with whatever stack is running — so an enqueue from a test
+    hands the worker an id that the worker resolves against the REAL database.
+    Ids restart at 1 in the test database, so this does not fail harmlessly: it
+    reprocesses real comment 1, spends real model calls, and writes a second
+    draft into the data being demoed. It was only ever invisible because the
+    orchestrator's idempotency guard happened to catch it.
+
+    The worker's suite has the equivalent guard for models
+    (`ALLOW_MODEL_REQUESTS = False`); this is the queue's, and it exists as one
+    seam because every enqueue now goes through `app/services/queue.py`.
+    """
+    fake = FakeQueue()
+
+    @asynccontextmanager
+    async def _pool() -> AsyncIterator[FakeQueue]:
+        yield fake
+
+    monkeypatch.setattr(queue_service, "redis_pool", _pool)
+    return fake
 
 
 @pytest.fixture

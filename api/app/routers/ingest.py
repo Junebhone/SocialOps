@@ -9,16 +9,14 @@ import csv
 import io
 import time
 
-from arq import create_pool
-from arq.connections import RedisSettings
 from fastapi import APIRouter, HTTPException, Request, UploadFile
 from pydantic import AwareDatetime, BaseModel, Field, ValidationError
 from sqlalchemy import func, select
 from sqlalchemy.dialects.postgresql import insert
 
-from app.config import get_settings
 from app.db import SessionDep
 from app.models import Comment, FailedJob, PlatformAccount, Post
+from app.services.queue import enqueue_comments, queue_depth
 
 router = APIRouter(tags=["ingest"])
 
@@ -159,38 +157,8 @@ async def ingest_comments(request: Request, session: SessionDep) -> IngestResult
 
     await session.commit()
 
-    enqueued = await _enqueue(inserted_ids)
+    enqueued = await enqueue_comments(inserted_ids)
     return IngestResult(inserted=len(inserted_ids), skipped=skipped, enqueued=enqueued)
-
-
-async def _enqueue(comment_ids: list[int], attempt: str = "") -> int:
-    """One job per comment, keyed by comment id.
-
-    The job key is what stops a re-enqueue double-charging: arq returns None for
-    a job id that already exists, so the same comment cannot be queued twice
-    even if this endpoint is called concurrently (D9).
-
-    `attempt` exists because that same key blocks legitimate retries. arq keeps a
-    finished job's key for an hour, so a comment whose job died is refused
-    re-entry for an hour — which is exactly what happened when the database ran
-    out of disk mid-replay and 124 jobs were lost. A retry is a genuinely new
-    attempt and gets its own key; the dedupe still holds within one attempt.
-    """
-    if not comment_ids:
-        return 0
-
-    settings = get_settings()
-    redis = await create_pool(RedisSettings.from_dsn(settings.redis_url))
-    try:
-        enqueued = 0
-        for comment_id in comment_ids:
-            job = await redis.enqueue_job(
-                "process_comment", comment_id, _job_id=f"comment-{comment_id}{attempt}"
-            )
-            enqueued += job is not None
-        return enqueued
-    finally:
-        await redis.aclose()
 
 
 class RequeueResult(BaseModel):
@@ -216,7 +184,7 @@ async def requeue_unprocessed(session: SessionDep) -> RequeueResult:
         .all()
     )
     attempt = f"-retry-{int(time.time())}"
-    return RequeueResult(requeued=await _enqueue(list(stuck), attempt=attempt))
+    return RequeueResult(requeued=await enqueue_comments(list(stuck), attempt=attempt))
 
 
 class QueueStats(BaseModel):
@@ -229,20 +197,10 @@ class QueueStats(BaseModel):
 async def queue_stats(session: SessionDep) -> QueueStats:
     """Live queue depth for the top bar, polled every 2s.
 
-    Read straight from Redis and the DLQ table. D18 dropped the idea of sampling
-    this into a table every 10s — that existed only to feed a chart D1 cut, and
-    it would have put a permanent background writer inside the worker whose
-    latency step 9 measures.
+    Read straight from Redis and the DLQ table — see `services/queue.py` for why
+    it is not sampled into a table (D18).
     """
-    settings = get_settings()
-    redis = await create_pool(RedisSettings.from_dsn(settings.redis_url))
-    try:
-        queued = int(await redis.zcard("arq:queue") or 0)
-        # arq writes one `in-progress` key per job it has picked up.
-        running = len(await redis.keys("arq:in-progress:*"))
-    finally:
-        await redis.aclose()
-
+    queued, running = await queue_depth()
     failed = int(await session.scalar(select(func.count()).select_from(FailedJob)) or 0)
 
     return QueueStats(queued=queued, running=running, failed=failed)

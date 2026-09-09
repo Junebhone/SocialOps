@@ -21,7 +21,15 @@ from sqlalchemy.ext.asyncio import AsyncEngine, AsyncSession, async_sessionmaker
 from app.config import get_settings
 from app.db import create_engine_and_sessionmaker
 from app.logging import configure_logging, request_id_middleware
-from app.routers import brands, comments, ingest, platform_accounts, posts, reply_drafts
+from app.routers import (
+    assets,
+    brands,
+    comments,
+    ingest,
+    platform_accounts,
+    posts,
+    reply_drafts,
+)
 
 configure_logging()
 
@@ -66,6 +74,7 @@ app.include_router(posts.router)
 app.include_router(ingest.router)
 app.include_router(comments.router)
 app.include_router(reply_drafts.router)
+app.include_router(assets.router)
 
 
 class Health(BaseModel):

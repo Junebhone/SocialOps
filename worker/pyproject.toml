@@ -15,6 +15,13 @@ dependencies = [
     "pydantic>=2.9",
     "pydantic-settings>=2.6",
     "structlog>=24.4",
+    # New in step 6 (hard rule #11). The media agent needs an image decoder to
+    # do the three things worker/images.py documents: downscale to 1024px as
+    # step 6 specifies, apply EXIF rotation so a phone photo is not described
+    # sideways, and re-encode. There is no way to do any of that with the
+    # standard library, and it is already the api's dev-extra for drawing the
+    # sample product images, so it is not a new name in the project.
+    "pillow>=11",
 ]
 
 [project.optional-dependencies]

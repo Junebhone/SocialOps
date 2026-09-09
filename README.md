@@ -157,18 +157,30 @@ open http://localhost:8000/docs        # OpenAPI
 open http://localhost:3000             # Next.js app
 ```
 
-`GET /docs` lists the CRUD endpoints for brands, platform accounts and posts.
-Every list endpoint except `/brands` requires a `brand_id` query parameter — the
-API is stateless, so scope lives in the URL and a shared link resolves to the
-same view.
+`GET /docs` lists every endpoint. All of them except `/brands` require a
+`brand_id` query parameter — the API is stateless, so scope lives in the URL and
+a shared link resolves to the same view.
 
-The remaining targets land with the steps that implement them
-([docs/PROMPTS.md](docs/PROMPTS.md)):
+Drive the two pipelines:
 
-| Command | Available after |
-| --- | --- |
-| `make replay` | Step 4 — `POST /ingest/comments`, queue, orchestrator |
-| `make eval` | Step 4.5 — triage accuracy over the 50 labeled comments |
+```bash
+make replay      # 300 comments -> triage -> response -> drafts in the Inbox
+make eval        # triage accuracy over the 50 labeled comments
+
+# Upload one product photo: media analysis + three platform drafts.
+curl -F "file=@data/sample_images/ridgeline_beans_flatlay.png" \
+     "http://localhost:8000/assets?brand_id=2"
+```
+
+The upload returns immediately with `enqueued: true`; the worker then runs
+`media` and `content` against `qwen3.5:9b` and writes three `content_drafts`.
+Watch it with `make logs`. On a warm model that is roughly 15–35 s end to end —
+the first upload after an idle gap pays for a 6.6 GB model load on top.
+
+The sample images in `data/sample_images/` are Pillow-drawn shapes, not
+photographs (synthetic data only). The vision agent describes them accurately,
+which means the brand check usually fails on "logo visible" — that is the agent
+working, not a bug.
 
 Day-to-day:
 
