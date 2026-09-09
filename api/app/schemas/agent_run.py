@@ -37,8 +37,14 @@ class FailedJobRead(ORMModel):
     job_type: str
     payload_json: dict[str, Any]
     error: str
+    # For a row written by ingest this is 1 and stays 1: it failed at the
+    # boundary and arq never saw it. For a real job it is how many times arq
+    # tried. It is not, and must not become, a count of button presses.
     attempts: int
     created_at: AwareDatetime
+    # Whether this row can be put back on the queue. Sent by the API rather
+    # than derived in the browser, so there is one definition of the rule.
+    retryable: bool = False
 
 
 class AgentTotals(ORMModel):

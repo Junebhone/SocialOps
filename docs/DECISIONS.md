@@ -830,6 +830,39 @@ replay behind a single brand row.
 
 ---
 
+## D30 — Retry where a job can be re-queued; Discard where it cannot · `SETTLED`
+
+**Decision:** `POST /failed_jobs/{id}/retry` accepts only `process_comment` and `process_asset`.
+`POST /failed_jobs/{id}/discard` clears any row. `GET /failed_jobs` reports `retryable` per row and
+the panel labels its one button from that. `attempts` is never incremented by a human action.
+
+**Why — found by using it.** The first version offered Retry on every row, and for an
+`ingest_comment` row it re-validated the stored payload. That payload is stored and immutable, so
+the validation could never pass: every press returned the same 422 and incremented `attempts`. The
+malformed row from `viral_post_dump.json` reached **`attempts: 7`** on a real screen, entirely from
+button presses, next to a documented rule that says three attempts and then the DLQ. A counter that
+records how many times someone pressed a button that cannot work is not information, and the code
+comment defending it — *"it succeeds only if someone actually fixed the payload, which is the case
+it exists for"* — described a case unreachable from the UI.
+
+**Why Discard is the right affordance.** The DLQ is a list of work that still needs attention. For
+a malformed input row the attention it needs is a person reading the reason and fixing the source
+data, which happens nowhere near this panel; re-running is not part of the remedy. So the action
+that belongs on the row is the one that says "seen, and dealt with elsewhere". The refused Retry
+now names the remedy rather than just declining.
+
+**Why Discard is not restricted to unretryable rows.** An operator who has decided a dead comment
+job is not worth chasing should not have to press Retry first to get rid of it.
+
+**Why `retryable` is on the wire.** The rule lives in one place. Deriving it in the browser from a
+second copy of the job-type list is how the two drift, and the drift would show up as a button that
+promises something the API refuses.
+
+**Touches:** step 9 in `PROMPTS.md` (the panel has two actions, not one) · D27, which introduced
+the `ingest_comment` job type.
+
+---
+
 ## Standing assumptions
 
 | # | Assumption | Revisit when |

@@ -2,6 +2,12 @@
 
 up:
 	docker compose up --build -d
+	@# Building orphans the previous images — ~2 GB per rebuild, which fills
+	@# Docker's default 8 GB disk in three or four `make up`s and ends with
+	@# Postgres unable to restart (D19). Pruning here rather than only in
+	@# `reset`, because `up` is the target that builds.
+	@docker image prune -f >/dev/null
+	@docker run --rm alpine:3 df -h / | awk 'NR==2 {printf "  %s free of %s in the Docker VM\n", $$4, $$2}'
 
 down:
 	docker compose down
@@ -66,10 +72,6 @@ models:
 reset: down
 	docker compose down -v
 	$(MAKE) up migrate seed
-	@# `up` builds, which orphans the previous images. Measured: one reset left
-	@# ~2 GB of dangling layers behind, and three resets fill Docker's default
-	@# 8 GB disk — at which point Postgres PANICs and will not restart (D19).
-	docker image prune -f
 
 # Reclaim Docker disk. Dangling images and build cache only: both are rebuild
 # artefacts, so nothing here loses data.

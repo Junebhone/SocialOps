@@ -17,7 +17,7 @@ from sqlalchemy import select
 
 from app.db import SessionDep
 from app.models import FailedJob
-from app.routers.ingest import dead_letter_rows, parse_rows
+from app.routers.ingest import dead_letter_rows
 from app.routers.params import LimitQuery, OffsetQuery
 from app.schemas.agent_run import FailedJobRead
 from app.services.queue import enqueue_asset, enqueue_comments
@@ -25,8 +25,21 @@ from app.services.queue import enqueue_asset, enqueue_comments
 router = APIRouter(prefix="/failed_jobs", tags=["failed_jobs"])
 
 
+# Job types that can be put back on the queue. A row written by ingest is not
+# one of them: it never became a job, and its payload is stored and immutable,
+# so re-running it produces the identical failure forever. The remedy for a
+# malformed input row is to fix the source data and re-ingest, which happens
+# nowhere near this panel.
+RETRYABLE = frozenset({"process_comment", "process_asset"})
+
+
 class RetryResult(BaseModel):
     requeued: bool
+    detail: str
+
+
+class DiscardResult(BaseModel):
+    discarded: bool
     detail: str
 
 
@@ -35,7 +48,7 @@ async def list_failed_jobs(
     session: SessionDep, limit: LimitQuery = 50, offset: OffsetQuery = 0
 ) -> Any:
     """Newest first: the failure you are debugging is the one that just happened."""
-    return list(
+    rows = (
         (
             await session.execute(
                 select(FailedJob).order_by(FailedJob.id.desc()).limit(limit).offset(offset)
@@ -44,6 +57,15 @@ async def list_failed_jobs(
         .scalars()
         .all()
     )
+    return [
+        FailedJobRead.model_validate(
+            {
+                **{c.name: getattr(row, c.name) for c in FailedJob.__table__.columns},
+                "retryable": row.job_type in RETRYABLE,
+            }
+        )
+        for row in rows
+    ]
 
 
 @router.post("/{job_id}/retry", response_model=RetryResult)
@@ -77,11 +99,18 @@ async def retry_failed_job(job_id: int, session: SessionDep) -> Any:
             asset_id = int(job.payload_json["asset_id"])
             queued = int(await enqueue_asset(asset_id, attempt=attempt))
             detail = f"Re-queued asset {asset_id}"
-        case "ingest_comment":
-            return await _retry_ingest(session, job)
         case _:
+            # Including "ingest_comment". Retrying it re-runs a validation that
+            # cannot pass — an earlier version did exactly that, returned the
+            # same error every time, and incremented `attempts` on each press.
+            # A counter that only records how many times someone pressed a
+            # button that cannot work is not information.
             raise HTTPException(
-                status_code=422, detail=f"Cannot retry job type {job.job_type!r}"
+                status_code=422,
+                detail=(
+                    f"{job.job_type} cannot be re-queued. Fix the row in the source "
+                    f"data and ingest it again, then discard this entry."
+                ),
             )
 
     if not queued:
@@ -97,29 +126,27 @@ async def retry_failed_job(job_id: int, session: SessionDep) -> Any:
     return RetryResult(requeued=True, detail=detail)
 
 
-async def _retry_ingest(session: SessionDep, job: FailedJob) -> RetryResult:
-    """Re-validate the stored row.
+@router.post("/{job_id}/discard", response_model=DiscardResult)
+async def discard_failed_job(job_id: int, session: SessionDep) -> Any:
+    """Acknowledge a failure and clear it from the queue.
 
-    Nothing about the row has changed since it failed, so this normally fails
-    again — and that is the honest behaviour. The button re-runs the same
-    operation and reports the same reason, rather than pretending. It succeeds
-    only if someone actually fixed the payload, which is the case it exists for.
+    The DLQ is a list of work that still needs attention. For a malformed input
+    row the attention it needs is a person reading the reason and fixing the
+    source — there is nothing here to re-run. Discard is how that row leaves,
+    once someone has actually looked at it.
+
+    Deliberately not restricted to unretryable types: an operator who has
+    decided a dead comment job is not worth chasing should be able to clear it
+    without inventing a reason to press Retry first.
     """
-    _parsed, rejected = parse_rows([job.payload_json])
-    if rejected:
-        job.attempts += 1
-        job.error = rejected[0].error
-        await session.commit()
-        raise HTTPException(status_code=422, detail=f"Still invalid — {rejected[0].error}")
+    job = await session.get(FailedJob, job_id)
+    if job is None:
+        raise HTTPException(status_code=404, detail="Failed job not found")
 
-    # It parses now. Re-ingesting is the caller's job: this endpoint has no post
-    # lookup and no business duplicating one. Clearing the row is what it can
-    # honestly do.
+    job_type = job.job_type
     await session.delete(job)
     await session.commit()
-    return RetryResult(
-        requeued=False, detail="Row is valid now; re-run the ingest to load it"
-    )
+    return DiscardResult(discarded=True, detail=f"Cleared the {job_type} entry")
 
 
-__all__ = ["dead_letter_rows", "router"]
+__all__ = ["RETRYABLE", "dead_letter_rows", "router"]

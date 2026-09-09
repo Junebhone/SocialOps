@@ -210,12 +210,15 @@ async def test_retrying_an_asset_job(
     assert [fn for fn, _args in queue.jobs.values()] == ["process_asset"]
 
 
-async def test_retrying_a_still_malformed_row_says_so_and_keeps_the_row(
+async def test_an_ingest_row_is_not_retryable_and_says_why(
     client: AsyncClient, session: AsyncSession
 ) -> None:
-    """Retry re-runs the same operation and reports the same reason, rather than
-    pretending. Nothing about the row changed, so it fails again — and the row
-    stays in the DLQ with its attempt count bumped."""
+    """An earlier version re-validated the stored row on every press. It could
+    never pass — the payload is stored and immutable — so it returned the same
+    error each time and walked `attempts` upward: one row reached 7 purely from
+    button presses. A counter that records how often someone pressed a button
+    that cannot work is not information.
+    """
     await _brand_and_post(client)
     await client.post("/ingest/comments", json=[_row("bad-1", created_at="nope")])
     job = (await session.execute(select(FailedJob))).scalar_one()
@@ -223,19 +226,76 @@ async def test_retrying_a_still_malformed_row_says_so_and_keeps_the_row(
     response = await client.post(f"/failed_jobs/{job.id}/retry")
 
     assert response.status_code == 422
-    assert "Still invalid" in response.json()["detail"]
+    assert "cannot be re-queued" in response.json()["detail"]
+    # And the attempt count did not move.
     await session.refresh(job)
-    assert job.attempts == 2
+    assert job.attempts == 1
+
+
+async def test_the_list_says_which_rows_can_be_retried(
+    client: AsyncClient, session: AsyncSession
+) -> None:
+    """Decided by the API so there is one definition of the rule — the browser
+    chooses a button label from this, not from its own copy of the list."""
+    await _brand_and_post(client)
+    await client.post("/ingest/comments", json=[_row("bad-1", created_at="nope")])
+    session.add(
+        FailedJob(job_type="process_comment", payload_json={"comment_id": 1},
+                  error="boom", attempts=3)
+    )
+    await session.commit()
+
+    rows = {job["job_type"]: job["retryable"] for job in (await client.get("/failed_jobs")).json()}
+
+    assert rows == {"ingest_comment": False, "process_comment": True}
+
+
+async def test_discarding_clears_the_row(
+    client: AsyncClient, session: AsyncSession
+) -> None:
+    """The DLQ is work that still needs attention. Once a person has read the
+    reason for a malformed row, the row is what leaves — the remedy is fixing
+    the source data, which happens nowhere near this panel."""
+    await _brand_and_post(client)
+    await client.post("/ingest/comments", json=[_row("bad-1", created_at="nope")])
+    job = (await session.execute(select(FailedJob))).scalar_one()
+
+    body = (await client.post(f"/failed_jobs/{job.id}/discard")).json()
+
+    assert body["discarded"] is True
+    assert (await session.execute(select(FailedJob))).scalars().all() == []
+
+
+async def test_a_retryable_job_can_also_be_discarded(
+    client: AsyncClient, session: AsyncSession
+) -> None:
+    """Not restricted to unretryable types: an operator who has decided a dead
+    comment job is not worth chasing should not have to press Retry first to
+    get rid of it."""
+    session.add(
+        FailedJob(job_type="process_comment", payload_json={"comment_id": 1},
+                  error="boom", attempts=3)
+    )
+    await session.commit()
+    job = (await session.execute(select(FailedJob))).scalar_one()
+
+    assert (await client.post(f"/failed_jobs/{job.id}/discard")).status_code == 200
+    assert (await session.execute(select(FailedJob))).scalars().all() == []
 
 
 async def test_retrying_an_unknown_job_is_a_404(client: AsyncClient) -> None:
     assert (await client.post("/failed_jobs/4242/retry")).status_code == 404
 
 
-async def test_an_unretryable_job_type_says_so(
+async def test_discarding_an_unknown_job_is_a_404(client: AsyncClient) -> None:
+    assert (await client.post("/failed_jobs/4242/discard")).status_code == 404
+
+
+async def test_an_unknown_job_type_cannot_be_retried(
     client: AsyncClient, session: AsyncSession
 ) -> None:
-    """Better a clear 422 than a button that silently does nothing."""
+    """Better a clear 422 naming the remedy than a button that silently does
+    nothing."""
     session.add(
         FailedJob(job_type="something_else", payload_json={}, error="?", attempts=3)
     )
@@ -245,7 +305,7 @@ async def test_an_unretryable_job_type_says_so(
     response = await client.post(f"/failed_jobs/{job.id}/retry")
 
     assert response.status_code == 422
-    assert "Cannot retry" in response.json()["detail"]
+    assert "cannot be re-queued" in response.json()["detail"]
 
 
 # --- batching must not change the contract ---------------------------------

@@ -197,16 +197,26 @@ function FailedJobs() {
     return () => clearInterval(timer);
   }, [load]);
 
-  async function retry(job: FailedJob) {
+  /**
+   * Retry where it can work, Discard where it cannot.
+   *
+   * `retryable` comes from the API. A row written by ingest never became a
+   * queue job and its payload is stored and immutable, so re-running it
+   * produces the identical failure every time — an earlier version offered
+   * Retry on those too, and pressing it just walked a counter upward. What
+   * that row needs is a person reading the reason, fixing the source data,
+   * and clearing the entry.
+   */
+  async function act(job: FailedJob) {
     setBusy(job.id);
     setError(null);
     setNotice(null);
     try {
-      const result = await api.retryFailedJob(job.id);
+      const result = job.retryable
+        ? await api.retryFailedJob(job.id)
+        : await api.discardFailedJob(job.id);
       setNotice(result.detail);
     } catch (err) {
-      // A retry that fails again is the normal outcome for a malformed row, and
-      // the reason is the useful part. Shown inline, never as an alert().
       setError((err as Error).message);
     } finally {
       setBusy(null);
@@ -268,9 +278,14 @@ function FailedJobs() {
                     size="sm"
                     variant="outline"
                     disabled={busy === job.id}
-                    onClick={() => retry(job)}
+                    onClick={() => act(job)}
+                    title={
+                      job.retryable
+                        ? "Put this job back on the queue"
+                        : "Nothing to re-run — fix the row in the source data, then clear this"
+                    }
                   >
-                    Retry
+                    {job.retryable ? "Retry" : "Discard"}
                   </Button>
                 </TableCell>
               </TableRow>

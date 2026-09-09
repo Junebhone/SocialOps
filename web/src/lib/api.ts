@@ -129,12 +129,20 @@ export interface FailedJob {
   job_type: string;
   payload_json: Record<string, unknown>;
   error: string;
+  /** How many times it was ATTEMPTED — never a count of button presses. */
   attempts: number;
   created_at: string;
+  /** Whether it can go back on the queue. Decided by the API, not here. */
+  retryable: boolean;
 }
 
 export interface RetryResult {
   requeued: boolean;
+  detail: string;
+}
+
+export interface DiscardResult {
+  discarded: boolean;
   detail: string;
 }
 
@@ -256,4 +264,7 @@ export const api = {
 
   retryFailedJob: (id: number) =>
     request<RetryResult>(`/failed_jobs/${id}/retry`, { method: "POST" }),
+
+  discardFailedJob: (id: number) =>
+    request<DiscardResult>(`/failed_jobs/${id}/discard`, { method: "POST" }),
 };
