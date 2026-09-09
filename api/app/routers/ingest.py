@@ -7,6 +7,7 @@ model calls rather than two wasted hours.
 
 import csv
 import io
+import time
 
 from arq import create_pool
 from arq.connections import RedisSettings
@@ -162,12 +163,18 @@ async def ingest_comments(request: Request, session: SessionDep) -> IngestResult
     return IngestResult(inserted=len(inserted_ids), skipped=skipped, enqueued=enqueued)
 
 
-async def _enqueue(comment_ids: list[int]) -> int:
-    """One job per new comment, keyed by comment id.
+async def _enqueue(comment_ids: list[int], attempt: str = "") -> int:
+    """One job per comment, keyed by comment id.
 
     The job key is what stops a re-enqueue double-charging: arq returns None for
     a job id that already exists, so the same comment cannot be queued twice
     even if this endpoint is called concurrently (D9).
+
+    `attempt` exists because that same key blocks legitimate retries. arq keeps a
+    finished job's key for an hour, so a comment whose job died is refused
+    re-entry for an hour — which is exactly what happened when the database ran
+    out of disk mid-replay and 124 jobs were lost. A retry is a genuinely new
+    attempt and gets its own key; the dedupe still holds within one attempt.
     """
     if not comment_ids:
         return 0
@@ -178,12 +185,38 @@ async def _enqueue(comment_ids: list[int]) -> int:
         enqueued = 0
         for comment_id in comment_ids:
             job = await redis.enqueue_job(
-                "process_comment", comment_id, _job_id=f"comment-{comment_id}"
+                "process_comment", comment_id, _job_id=f"comment-{comment_id}{attempt}"
             )
             enqueued += job is not None
         return enqueued
     finally:
-        await redis.close()
+        await redis.aclose()
+
+
+class RequeueResult(BaseModel):
+    requeued: int
+
+
+@router.post("/queue/requeue", response_model=RequeueResult)
+async def requeue_unprocessed(session: SessionDep) -> RequeueResult:
+    """Re-enqueue every comment still sitting at `new`.
+
+    Ingest only enqueues comments it actually inserted (D9), which is right: it
+    is what stops a replayed dump re-spending model calls. But it means a job
+    lost to a worker outage is never retried — the comment stays `new` forever
+    and the queue looks healthy. This is the recovery path, and it is what
+    step 9's Retry button calls.
+
+    Idempotent for the same reason ingest is: the job key is derived from the
+    comment id, so a comment already queued is not queued twice.
+    """
+    stuck = (
+        (await session.execute(select(Comment.id).where(Comment.status == "new")))
+        .scalars()
+        .all()
+    )
+    attempt = f"-retry-{int(time.time())}"
+    return RequeueResult(requeued=await _enqueue(list(stuck), attempt=attempt))
 
 
 class QueueStats(BaseModel):
@@ -208,7 +241,7 @@ async def queue_stats(session: SessionDep) -> QueueStats:
         # arq writes one `in-progress` key per job it has picked up.
         running = len(await redis.keys("arq:in-progress:*"))
     finally:
-        await redis.close()
+        await redis.aclose()
 
     failed = int(await session.scalar(select(func.count()).select_from(FailedJob)) or 0)
 
