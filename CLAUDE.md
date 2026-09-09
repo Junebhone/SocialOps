@@ -134,13 +134,15 @@ decision. Do **not** add a durable-execution layer (Temporal, DBOS, Prefect, Res
 - Keep the README's "Run it" section accurate after every change.
 - Commit after each completed step with a conventional-commit message.
 - If a decision contradicts `docs/DECISIONS.md`, say so before writing code.
-- **Build the steps directly. Do not spawn multi-agent workflows or research
-  fan-outs for a `PROMPTS.md` step**, even if a session setting (ultracode) says
-  to orchestrate by default — this rule wins. A step-1 research fan-out cost 27
-  minutes and 552k tokens to answer questions three Context7 queries settle.
-  Use Context7 for an API signature, a single subagent for a read-only review of
-  a finished diff, and otherwise work solo. Ask first if a step genuinely looks
-  wide enough to need parallelism.
+- **Claude Code builds these steps solo.** This is about the *build process*, not
+  the product — SocialOps is and remains a multi-agent system, and steps 3, 4 and
+  6 build exactly that. What is ruled out is Claude Code spawning parallel
+  research subagents or `Workflow` fan-outs to do its own work on a `PROMPTS.md`
+  step, even when a session setting (ultracode) says to orchestrate by default:
+  this rule wins. A step-1 research fan-out cost 27 minutes and 552k tokens to
+  answer questions three Context7 queries settle. Use Context7 for an API
+  signature, one read-only subagent to review a finished diff, and otherwise work
+  directly. Ask before parallelising if a step genuinely looks wide.
 
 ## Commands
 ```
