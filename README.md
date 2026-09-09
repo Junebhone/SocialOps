@@ -4,7 +4,7 @@
 
 SocialOps gives a marketing manager one dashboard where incoming comments, mentions, and uploaded assets are handled by a team of specialist AI agents, with a human approving anything before it publishes.
 
-> **Status: Phase 1 in progress — step 0 of 10 complete.** The Compose stack builds and runs (postgres, redis, api, worker, web); the data model, agents, and UI are being built step by step per [docs/PROMPTS.md](docs/PROMPTS.md).
+> **Status: Phase 1 in progress — steps 0 and 1 of 10 complete.** The Compose stack runs (postgres, redis, api, worker, web) and the ten-table schema is migrated with CRUD endpoints for brands, accounts and posts. Agents, the queue and the UI are being built step by step per [docs/PROMPTS.md](docs/PROMPTS.md).
 >
 > Start with **[docs/DECISIONS.md](docs/DECISIONS.md)** — every non-obvious technical decision and why. Then [docs/START-HERE.md](docs/START-HERE.md) to set up, and [docs/PROMPTS.md](docs/PROMPTS.md) to build.
 
@@ -144,9 +144,10 @@ resident; without the cap Ollama tries to hold three and evicts mid-replay. See
 cp .env.example .env
 make models      # pull qwen3.5:2b and qwen3.5:9b (~9.3 GB) — one time
 make up          # build and start postgres, redis, api, worker, web
+make migrate     # create the ten tables
 ```
 
-That is the whole of step 0. Verify it:
+Verify it:
 
 ```bash
 docker compose ps                      # five containers, postgres/redis/api healthy
@@ -155,12 +156,16 @@ open http://localhost:8000/docs        # OpenAPI
 open http://localhost:3000             # Next.js app
 ```
 
+`GET /docs` lists the CRUD endpoints for brands, platform accounts and posts.
+Every list endpoint except `/brands` requires a `brand_id` query parameter — the
+API is stateless, so scope lives in the URL and a shared link resolves to the
+same view.
+
 The remaining targets land with the steps that implement them
 ([docs/PROMPTS.md](docs/PROMPTS.md)):
 
 | Command | Available after |
 | --- | --- |
-| `make migrate` | Step 1 — models and the initial Alembic migration |
 | `make seed` | Step 2 — two brands, posts, synthetic comments |
 | `make replay` | Step 4 — `POST /ingest/comments`, queue, orchestrator |
 | `make eval` | Step 4.5 — triage accuracy over the 50 labeled comments |
