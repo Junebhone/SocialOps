@@ -124,6 +124,20 @@ export interface AgentRunPage {
   total_runs: number;
 }
 
+export interface FailedJob {
+  id: number;
+  job_type: string;
+  payload_json: Record<string, unknown>;
+  error: string;
+  attempts: number;
+  created_at: string;
+}
+
+export interface RetryResult {
+  requeued: boolean;
+  detail: string;
+}
+
 export interface AgentRunFilters {
   agent?: AgentName;
   status?: AgentRunStatus;
@@ -234,4 +248,12 @@ export const api = {
     }
     return request<AgentRunPage>(`/agent_runs?${params}`);
   },
+
+  // Not brand-scoped, unlike every other list call. failed_jobs has no
+  // brand_id — a row exists precisely because its payload could not be
+  // resolved — so it sits alongside /queue/stats as operational data.
+  failedJobs: () => request<FailedJob[]>("/failed_jobs"),
+
+  retryFailedJob: (id: number) =>
+    request<RetryResult>(`/failed_jobs/${id}/retry`, { method: "POST" }),
 };

@@ -12,6 +12,7 @@ import {
   type AgentRun,
   type AgentRunPage,
   type AgentTotals,
+  type FailedJob,
 } from "@/lib/api";
 import { cn } from "@/lib/utils";
 
@@ -125,6 +126,8 @@ export function Agents() {
         </p>
       )}
 
+      <FailedJobs />
+
       {page === null ? (
         <LoadingRows />
       ) : page.totals.length === 0 ? (
@@ -149,6 +152,130 @@ export function Agents() {
       )}
     </div>
   );
+}
+
+/**
+ * The DLQ (hard rule #7).
+ *
+ * Placed above the cost summary on purpose: on this page a job that died
+ * outranks a token total. It is not brand-scoped and says so — `failed_jobs`
+ * has no brand_id, because a row lands here precisely when its payload could
+ * not be resolved.
+ */
+function FailedJobs() {
+  const [jobs, setJobs] = useState<FailedJob[] | null>(null);
+  const [busy, setBusy] = useState<number | null>(null);
+  const [notice, setNotice] = useState<string | null>(null);
+  const [error, setError] = useState<string | null>(null);
+
+  const load = useCallback(async () => {
+    try {
+      setJobs(await api.failedJobs());
+      setError(null);
+    } catch (err) {
+      setError((err as Error).message);
+    }
+  }, []);
+
+  useEffect(() => {
+    void load();
+    const timer = setInterval(() => {
+      if (!document.hidden) void load();
+    }, 5000);
+    return () => clearInterval(timer);
+  }, [load]);
+
+  async function retry(job: FailedJob) {
+    setBusy(job.id);
+    setError(null);
+    setNotice(null);
+    try {
+      const result = await api.retryFailedJob(job.id);
+      setNotice(result.detail);
+    } catch (err) {
+      // A retry that fails again is the normal outcome for a malformed row, and
+      // the reason is the useful part. Shown inline, never as an alert().
+      setError((err as Error).message);
+    } finally {
+      setBusy(null);
+      await load();
+    }
+  }
+
+  return (
+    <section>
+      <h2 className="mb-2 font-medium">
+        Failed jobs{" "}
+        <span className="font-normal text-muted-foreground">all brands</span>
+      </h2>
+
+      {notice && <p className="mb-2 text-sm text-muted-foreground">{notice}</p>}
+      {error && (
+        <p className="mb-2 rounded-md border border-rose-200 bg-rose-50 px-3 py-2 text-sm text-rose-700 dark:border-rose-900 dark:bg-rose-950 dark:text-rose-200">
+          {error}
+        </p>
+      )}
+
+      {jobs === null ? (
+        <div className="h-10 animate-pulse rounded-md bg-muted" />
+      ) : jobs.length === 0 ? (
+        <p className="rounded-lg border border-dashed border-border px-4 py-4 text-sm text-muted-foreground">
+          Nothing dead-lettered. A job that fails three times lands here with its payload.
+        </p>
+      ) : (
+        <Table>
+          <TableHeader>
+            <TableRow>
+              <TableHead className="w-40">Time</TableHead>
+              <TableHead className="w-36">Job</TableHead>
+              <TableHead>Why it failed</TableHead>
+              <TableHead className="w-20 text-right">Attempts</TableHead>
+              <TableHead className="w-24 text-right">Action</TableHead>
+            </TableRow>
+          </TableHeader>
+          <TableBody>
+            {jobs.map((job) => (
+              <TableRow key={job.id} className="align-top">
+                <TableCell className="py-2.5 text-muted-foreground">
+                  <Timestamp value={job.created_at} />
+                </TableCell>
+                <TableCell className="py-2.5">
+                  {job.job_type}
+                  <p className="mt-0.5 truncate text-xs text-muted-foreground">
+                    {describePayload(job.payload_json)}
+                  </p>
+                </TableCell>
+                <TableCell className="max-w-md py-2.5 text-rose-700 dark:text-rose-300">
+                  {job.error}
+                </TableCell>
+                <TableCell className="py-2.5 text-right font-mono tabular-nums">
+                  {job.attempts}
+                </TableCell>
+                <TableCell className="py-2.5 text-right">
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    disabled={busy === job.id}
+                    onClick={() => retry(job)}
+                  >
+                    Retry
+                  </Button>
+                </TableCell>
+              </TableRow>
+            ))}
+          </TableBody>
+        </Table>
+      )}
+    </section>
+  );
+}
+
+/** What the job was about, in the words the payload actually uses. */
+function describePayload(payload: Record<string, unknown>): string {
+  if (typeof payload.comment_id === "number") return `comment ${payload.comment_id}`;
+  if (typeof payload.asset_id === "number") return `asset ${payload.asset_id}`;
+  if (typeof payload.external_id === "string") return `row ${payload.external_id}`;
+  return JSON.stringify(payload).slice(0, 80);
 }
 
 function Totals({ totals }: { totals: AgentTotals[] }) {

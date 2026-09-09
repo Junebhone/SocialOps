@@ -9,17 +9,19 @@ needs (it owns a connection pool), so it is built in the lifespan and reached
 through `request.state` rather than being a module global.
 """
 
-from collections.abc import AsyncIterator
+from collections.abc import AsyncIterator, Awaitable
 from contextlib import asynccontextmanager
-from typing import TypedDict
+from typing import Literal, TypedDict
 
-from fastapi import FastAPI
+import structlog
+from fastapi import FastAPI, Response
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
+from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncEngine, AsyncSession, async_sessionmaker
 
 from app.config import get_settings
-from app.db import create_engine_and_sessionmaker
+from app.db import SessionDep, create_engine_and_sessionmaker
 from app.logging import configure_logging, request_id_middleware
 from app.routers import (
     agent_runs,
@@ -27,13 +29,17 @@ from app.routers import (
     brands,
     comments,
     content_drafts,
+    failed_jobs,
     ingest,
     platform_accounts,
     posts,
     reply_drafts,
 )
+from app.services.queue import redis_pool
 
 configure_logging()
+
+log = structlog.get_logger()
 
 
 class State(TypedDict):
@@ -79,6 +85,7 @@ app.include_router(reply_drafts.router)
 app.include_router(assets.router)
 app.include_router(content_drafts.router)
 app.include_router(agent_runs.router)
+app.include_router(failed_jobs.router)
 
 
 class Health(BaseModel):
@@ -87,12 +94,65 @@ class Health(BaseModel):
     llm_provider: str
 
 
+class Readiness(BaseModel):
+    status: Literal["ok", "degraded"]
+    database: bool
+    redis: bool
+
+
 @app.get("/health", response_model=Health)
 async def health() -> Health:
-    """Liveness probe. Reads config so a misconfigured container fails visibly.
+    """Liveness: is this process up and configured?
 
-    Deliberately does not touch the database: this answers "is the process up",
-    and Compose uses it to gate dependent services.
+    Deliberately touches nothing external. A liveness probe that fails when a
+    dependency is down asks to be restarted for someone else's outage, which
+    turns a database blip into a restart loop. Use /health/ready for "can it
+    actually serve".
     """
     settings = get_settings()
     return Health(status="ok", version=app.version, llm_provider=settings.llm_provider)
+
+
+@app.get("/health/ready", response_model=Readiness)
+async def ready(session: SessionDep, response: Response) -> Readiness:
+    """Readiness: can this process serve a real request?
+
+    This exists because of a real incident. Docker's disk filled, Postgres hit
+    `PANIC: could not write to file` and refused to restart, and `docker compose
+    ps` went on reporting the API as **healthy** — because the Compose
+    healthcheck pointed at /health, which by design touches nothing. Four green
+    services, and every endpoint returning 500. See D19.
+
+    Returns 503 rather than raising, so the body still names which dependency is
+    down. "Postgres is unreachable" and "the API is broken" need to look
+    different at 2am.
+    """
+    database = await _can_reach(_ping_database(session))
+    redis = await _can_reach(_ping_redis())
+
+    if database and redis:
+        return Readiness(status="ok", database=True, redis=True)
+
+    response.status_code = 503
+    log.warning("readiness.degraded", database=database, redis=redis)
+    return Readiness(status="degraded", database=database, redis=redis)
+
+
+async def _can_reach(check: Awaitable[None]) -> bool:
+    """Any failure is a failure. The reason goes in the log, not the response —
+    a readiness body is read by a healthcheck, not by a person."""
+    try:
+        await check
+    except Exception:
+        log.exception("readiness.check_failed")
+        return False
+    return True
+
+
+async def _ping_database(session: AsyncSession) -> None:
+    await session.execute(text("SELECT 1"))
+
+
+async def _ping_redis() -> None:
+    async with redis_pool() as redis:
+        await redis.ping()

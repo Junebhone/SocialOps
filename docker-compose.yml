@@ -54,7 +54,11 @@ services:
       redis:
         condition: service_healthy
     healthcheck:
-      test: ["CMD-SHELL", "python -c \"import urllib.request,sys; sys.exit(0 if urllib.request.urlopen('http://127.0.0.1:8000/health').status==200 else 1)\""]
+      # /health/ready, not /health. Liveness answers "is the process up", which
+      # stayed true while Postgres was down after the disk filled — four green
+      # services in `docker compose ps` and every endpoint returning 500 (D19).
+      # Readiness touches Postgres and Redis, so the dashboard tells the truth.
+      test: ["CMD-SHELL", "python -c \"import urllib.request,sys; sys.exit(0 if urllib.request.urlopen('http://127.0.0.1:8000/health/ready').status==200 else 1)\""]
       interval: 10s
       timeout: 5s
       retries: 10
@@ -88,6 +92,17 @@ services:
         condition: service_healthy
       redis:
         condition: service_healthy
+    healthcheck:
+      # arq writes a health record to Redis on an interval; `--check` reads it
+      # and exits non-zero when it is stale. That is a real liveness signal:
+      # `pgrep arq` would stay green through a worker wedged on a model call
+      # that never returns, which is the failure actually worth catching here.
+      test: ["CMD-SHELL", "arq --check worker.main.WorkerSettings"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      # A cold 6.6 GB model load on the first job can outlast a short window.
+      start_period: 60s
 
   web:
     build:
@@ -108,6 +123,15 @@ services:
       - /app/.next
     depends_on:
       - api
+    healthcheck:
+      # wget is busybox's, already in node:24-alpine — no curl to install.
+      test: ["CMD-SHELL", "wget -q -O /dev/null http://127.0.0.1:3000/inbox || exit 1"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+      # `next dev` compiles a route on first request, and the first compile of
+      # the Inbox is slow enough to fail a tighter window on a cold container.
+      start_period: 90s
 
 volumes:
   pgdata:

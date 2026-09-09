@@ -192,14 +192,85 @@ photographs (synthetic data only). The vision agent describes them accurately,
 which means the brand check usually fails on "logo visible" — that is the agent
 working, not a bug.
 
+Or run the whole demo path in order:
+
+```bash
+make demo    # preflight, reset, seed, upload one photo, replay 300, print URLs
+```
+
 Day-to-day:
 
 ```bash
-make test    # pytest in the api and worker containers
-make lint    # ruff + mypy (python), eslint (web)
-make logs    # follow api and worker
+make test      # pytest in the api and worker containers
+make lint      # ruff + mypy (python), eslint (web)
+make logs      # follow api and worker
+make measure   # time a 300-comment replay, print the numbers below
+make diagrams  # re-render the pipeline diagrams from the graph definitions
 make down
 ```
+
+How it fits together — containers, both pipelines, the failure path, and what
+Phase 2+ actually changes — is in
+[docs/architecture-phase1.md](docs/architecture-phase1.md). The two pipeline
+diagrams there are generated from the `pydantic-graph` definitions, not drawn.
+
+### Switching LLM provider
+
+Nothing in `worker/agents/` names a model. Agents declare a **tier**, and
+`worker/config.py` is the only place a tier becomes a model name ([D6]) — which
+is what makes [ADR-0002]'s claim that Phase 4 is an env change something you can
+check rather than something you have to believe.
+
+**Ollama (Phase 1, the default).** Two models cover three tiers, because
+`qwen3.5:9b` is multimodal ([D20]):
+
+```env
+LLM_PROVIDER=ollama
+OLLAMA_BASE_URL=http://host.docker.internal:11434/v1
+LLM_MODEL_FAST=qwen3.5:2b       # triage
+LLM_MODEL_TEXT=qwen3.5:9b       # response, content
+LLM_MODEL_VISION=qwen3.5:9b     # media — same weights as TEXT
+```
+
+**Bedrock (Phase 4).** The same three tiers, pointed at three different models:
+
+```env
+LLM_PROVIDER=bedrock
+LLM_MODEL_FAST=anthropic.claude-haiku-4-5-20251001-v1:0
+LLM_MODEL_TEXT=anthropic.claude-sonnet-5-v1:0
+LLM_MODEL_VISION=anthropic.claude-sonnet-5-v1:0
+AWS_REGION=us-east-1            # credentials via the usual AWS chain
+```
+
+`LLM_PROVIDER` is validated against an allowlist ([D21]), so a typo fails at
+container start naming the field rather than an hour into a replay.
+
+What actually has to change in the code is **one `case` in
+`worker/llm.py::_build_model`** — it currently raises `NotImplementedError` for
+`bedrock`, deliberately, so the gap is visible rather than implied. No agent,
+no prompt, and no orchestrator node changes. Two things follow from that being
+the only edit:
+
+- `reasoning_effort: "none"` is gated on the provider ([D23]). It is an Ollama
+  workaround for Qwen returning empty messages, not a policy — Bedrock decides
+  thinking per model.
+- Cost stops being zero. `cost_usd` is `0` for Ollama because we own the
+  hardware, the priced value when `genai-prices` knows the model, and `NULL`
+  when it cannot be priced ([D15]). The Agents page renders that third state as
+  an em dash, never `$0.00`.
+
+**Then run the eval.** `make eval` scores the 50 hand-labelled comments in
+`data/eval.json` and appends a row to [docs/eval.md](docs/eval.md). Swapping
+provider without it is a claim; with it, it is a measurement — which is the
+reason the harness exists ([D5]).
+
+[D5]: docs/DECISIONS.md
+[D6]: docs/DECISIONS.md
+[D15]: docs/DECISIONS.md
+[D20]: docs/DECISIONS.md
+[D21]: docs/DECISIONS.md
+[D23]: docs/DECISIONS.md
+[ADR-0002]: docs/decisions/0002-llm-access-via-pydantic-ai.md
 
 ### Ports and services
 

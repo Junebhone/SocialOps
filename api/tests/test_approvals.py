@@ -55,7 +55,7 @@ async def test_ingest_is_idempotent(client: AsyncClient) -> None:
     second = await client.post("/ingest/comments", json=[_row(), _row("c-2")])
 
     assert first.json()["inserted"] == 2
-    assert second.json() == {"inserted": 0, "skipped": 2, "enqueued": 0}
+    assert second.json() == {"inserted": 0, "skipped": 2, "enqueued": 0, "rejected": 0}
 
 
 async def test_ingest_skips_a_comment_whose_post_is_unknown(client: AsyncClient) -> None:
@@ -67,15 +67,24 @@ async def test_ingest_skips_a_comment_whose_post_is_unknown(client: AsyncClient)
         "/ingest/comments", json=[{**_row(), "post_external_id": "does-not-exist"}]
     )
 
-    assert result.json() == {"inserted": 0, "skipped": 1, "enqueued": 0}
+    assert result.json() == {"inserted": 0, "skipped": 1, "enqueued": 0, "rejected": 0}
 
 
 async def test_ingest_rejects_a_row_with_no_timestamp(client: AsyncClient) -> None:
     """comments.created_at has no server default, so a missing value has to fail
-    at the boundary rather than at insert."""
+    at the boundary rather than at insert.
+
+    It fails as ONE ROW, not as the whole request. This test used to assert a
+    422 for the batch, which is what made `make replay-full` insert nothing at
+    all when it hit the dump's single deliberately-malformed row. The row is now
+    dead-lettered and the rest of the payload proceeds — see tests/test_dlq.py.
+    """
+    await _brand_and_account(client)
     payload = {k: v for k, v in _row().items() if k != "created_at"}
 
-    assert (await client.post("/ingest/comments", json=[payload])).status_code == 422
+    body = (await client.post("/ingest/comments", json=[payload, _row("c-2")])).json()
+
+    assert body == {"inserted": 1, "skipped": 0, "enqueued": 1, "rejected": 1}
 
 
 async def test_listing_comments_requires_a_brand(client: AsyncClient) -> None:

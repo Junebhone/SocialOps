@@ -1,4 +1,4 @@
-.PHONY: up down logs migrate seed test lint replay replay-full eval models reset
+.PHONY: up down logs migrate seed test lint replay replay-full eval measure measure-full diagrams demo models reset
 
 up:
 	docker compose up --build -d
@@ -36,6 +36,25 @@ replay-full:
 
 eval:
 	docker compose exec worker python -m worker.eval data/eval.json
+
+# Time a replay and print the Markdown block step 9 records in the README.
+# Reads the percentiles off GET /agent_runs — the same query the Agents page
+# renders — so the README and the screen cannot disagree.
+measure:
+	python3 scripts/measure.py data/comments_small.json --label "replay (300 comments)"
+
+# Unattended: expect 1.5-2h. Stop the web container first to free memory, and
+# check `docker system df` — the default 8 GB Docker disk is not enough (D19).
+measure-full:
+	python3 scripts/measure.py data/viral_post_dump.json --label "replay-full (2,000 comments)"
+
+# Re-render the pipeline diagrams from the pydantic-graph definitions (D12).
+# Run after adding or removing an orchestrator node.
+diagrams:
+	python3 scripts/gen_diagrams.py
+
+demo:
+	./scripts/demo.sh
 
 models:
 	ollama pull qwen3.5:2b
