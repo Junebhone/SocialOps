@@ -4,7 +4,7 @@
 
 SocialOps gives a marketing manager one dashboard where incoming comments, mentions, and uploaded assets are handled by a team of specialist AI agents, with a human approving anything before it publishes.
 
-> **Status: Phase 1 in progress — steps 0 and 1 of 10 complete.** The Compose stack runs (postgres, redis, api, worker, web) and the ten-table schema is migrated with CRUD endpoints for brands, accounts and posts. Agents, the queue and the UI are being built step by step per [docs/PROMPTS.md](docs/PROMPTS.md).
+> **Status: Phase 1 in progress — steps 0–2 of 10 complete.** The Compose stack runs, the ten-table schema is migrated with CRUD endpoints, and the synthetic dataset is generated and seeded. Agents, the queue and the UI are being built step by step per [docs/PROMPTS.md](docs/PROMPTS.md).
 >
 > Start with **[docs/DECISIONS.md](docs/DECISIONS.md)** — every non-obvious technical decision and why. Then [docs/START-HERE.md](docs/START-HERE.md) to set up, and [docs/PROMPTS.md](docs/PROMPTS.md) to build.
 
@@ -145,6 +145,7 @@ cp .env.example .env
 make models      # pull qwen3.5:2b and qwen3.5:9b (~9.3 GB) — one time
 make up          # build and start postgres, redis, api, worker, web
 make migrate     # create the ten tables
+make seed        # 2 brands, 6 accounts, 20 posts — re-runnable
 ```
 
 Verify it:
@@ -166,7 +167,6 @@ The remaining targets land with the steps that implement them
 
 | Command | Available after |
 | --- | --- |
-| `make seed` | Step 2 — two brands, posts, synthetic comments |
 | `make replay` | Step 4 — `POST /ingest/comments`, queue, orchestrator |
 | `make eval` | Step 4.5 — triage accuracy over the 50 labeled comments |
 

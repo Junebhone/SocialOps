@@ -1,0 +1,402 @@
+[
+  {
+    "external_id": "eval-000",
+    "text": "Does this come in decaf?",
+    "category": "question",
+    "sentiment": 0,
+    "needs_reply": true,
+    "hard": null
+  },
+  {
+    "external_id": "eval-001",
+    "text": "Do you ship to Canada, and how long does it usually take?",
+    "category": "question",
+    "sentiment": 0,
+    "needs_reply": true,
+    "hard": null
+  },
+  {
+    "external_id": "eval-002",
+    "text": "What percentage niacinamide is in the serum?",
+    "category": "question",
+    "sentiment": 0,
+    "needs_reply": true,
+    "hard": null
+  },
+  {
+    "external_id": "eval-003",
+    "text": "can i use this with retinol at night or is that too much",
+    "category": "question",
+    "sentiment": 0,
+    "needs_reply": true,
+    "hard": null
+  },
+  {
+    "external_id": "eval-004",
+    "text": "Is the packaging actually recyclable or just the outer box?",
+    "category": "question",
+    "sentiment": -1,
+    "needs_reply": true,
+    "hard": "a question carrying scepticism — category is question, sentiment is not neutral"
+  },
+  {
+    "external_id": "eval-005",
+    "text": "Hi! Any chance you'll do a bigger size of the barrier serum? I go through it so fast because I love it.",
+    "category": "question",
+    "sentiment": 2,
+    "needs_reply": true,
+    "hard": "praise wrapped around a question; the question is what needs answering"
+  },
+  {
+    "external_id": "eval-006",
+    "text": "Do you do wholesale for cafes?",
+    "category": "question",
+    "sentiment": 0,
+    "needs_reply": true,
+    "hard": null
+  },
+  {
+    "external_id": "eval-007",
+    "text": "whats the roast date on the guji",
+    "category": "question",
+    "sentiment": 0,
+    "needs_reply": true,
+    "hard": null
+  },
+  {
+    "external_id": "eval-008",
+    "text": "Is there a student discount?",
+    "category": "question",
+    "sentiment": 0,
+    "needs_reply": true,
+    "hard": null
+  },
+  {
+    "external_id": "eval-009",
+    "text": "When is the SPF launching? You've said 'soon' for four months.",
+    "category": "question",
+    "sentiment": -1,
+    "needs_reply": true,
+    "hard": "a question with an embedded complaint; still primarily a question"
+  },
+  {
+    "external_id": "eval-010",
+    "text": "Ist das vegan?",
+    "category": "question",
+    "sentiment": 0,
+    "needs_reply": true,
+    "hard": "German, three words"
+  },
+  {
+    "external_id": "eval-011",
+    "text": "Bonjour, est-ce que vous livrez en France ?",
+    "category": "question",
+    "sentiment": 0,
+    "needs_reply": true,
+    "hard": "French"
+  },
+  {
+    "external_id": "eval-012",
+    "text": "¿Tienen envío a España?",
+    "category": "question",
+    "sentiment": 0,
+    "needs_reply": true,
+    "hard": "Spanish"
+  },
+  {
+    "external_id": "eval-013",
+    "text": "Do the refill pouches fit the old bottle or do I need a new one?",
+    "category": "question",
+    "sentiment": 0,
+    "needs_reply": true,
+    "hard": null
+  },
+  {
+    "external_id": "eval-014",
+    "text": "Sorry if this is obvious — is the cleanser fragrance free?",
+    "category": "question",
+    "sentiment": 0,
+    "needs_reply": true,
+    "hard": null
+  },
+  {
+    "external_id": "eval-015",
+    "text": "Can someone check whether order RR-48210 has shipped? It's been a while.",
+    "category": "question",
+    "sentiment": -1,
+    "needs_reply": true,
+    "hard": "polite chase; a question, but the customer is drifting negative"
+  },
+  {
+    "external_id": "eval-016",
+    "text": "Order RR-33127 arrived smashed. Two bags split open across the box.",
+    "category": "complaint",
+    "sentiment": -2,
+    "needs_reply": true,
+    "hard": null
+  },
+  {
+    "external_id": "eval-017",
+    "text": "This gave me a rash within two days. I want a refund.",
+    "category": "complaint",
+    "sentiment": -2,
+    "needs_reply": true,
+    "hard": "safety plus refund — this is the urgency=high case"
+  },
+  {
+    "external_id": "eval-018",
+    "text": "Been waiting 11 days with no shipping update at all.",
+    "category": "complaint",
+    "sentiment": -1,
+    "needs_reply": true,
+    "hard": null
+  },
+  {
+    "external_id": "eval-019",
+    "text": "Third time the subscription has charged early. Sort it out please.",
+    "category": "complaint",
+    "sentiment": -2,
+    "needs_reply": true,
+    "hard": null
+  },
+  {
+    "external_id": "eval-020",
+    "text": "Great, another price rise with no warning. Really valuing your loyal customers there.",
+    "category": "complaint",
+    "sentiment": -2,
+    "needs_reply": true,
+    "hard": "sarcasm — surface words are positive, meaning is hostile"
+  },
+  {
+    "external_id": "eval-021",
+    "text": "The new formula is worse than the old one. Genuinely disappointed.",
+    "category": "complaint",
+    "sentiment": -1,
+    "needs_reply": true,
+    "hard": null
+  },
+  {
+    "external_id": "eval-022",
+    "text": "arrived stale, roast date was 6 weeks ago",
+    "category": "complaint",
+    "sentiment": -1,
+    "needs_reply": true,
+    "hard": null
+  },
+  {
+    "external_id": "eval-023",
+    "text": "I've emailed support three times and had nothing back.",
+    "category": "complaint",
+    "sentiment": -2,
+    "needs_reply": true,
+    "hard": null
+  },
+  {
+    "external_id": "eval-024",
+    "text": "Cancelled my subscription last month and you charged me anyway. This is close to theft.",
+    "category": "complaint",
+    "sentiment": -2,
+    "needs_reply": true,
+    "hard": null
+  },
+  {
+    "external_id": "eval-025",
+    "text": "Not the worst coffee I've had, but for the price I expected better.",
+    "category": "complaint",
+    "sentiment": -1,
+    "needs_reply": true,
+    "hard": "mild, hedged negative — easy to mislabel as neutral or praise"
+  },
+  {
+    "external_id": "eval-026",
+    "text": "This is genuinely the best coffee I've had all year.",
+    "category": "praise",
+    "sentiment": 2,
+    "needs_reply": false,
+    "hard": null
+  },
+  {
+    "external_id": "eval-027",
+    "text": "Third bag this month. No notes.",
+    "category": "praise",
+    "sentiment": 2,
+    "needs_reply": false,
+    "hard": null
+  },
+  {
+    "external_id": "eval-028",
+    "text": "Finally a brand that just tells you what's actually in the bottle.",
+    "category": "praise",
+    "sentiment": 2,
+    "needs_reply": false,
+    "hard": null
+  },
+  {
+    "external_id": "eval-029",
+    "text": "My skin has calmed down so much since switching. Thank you.",
+    "category": "praise",
+    "sentiment": 2,
+    "needs_reply": false,
+    "hard": null
+  },
+  {
+    "external_id": "eval-030",
+    "text": "obsessed with this",
+    "category": "praise",
+    "sentiment": 2,
+    "needs_reply": false,
+    "hard": null
+  },
+  {
+    "external_id": "eval-031",
+    "text": "Good coffee. Shipping was quick.",
+    "category": "praise",
+    "sentiment": 1,
+    "needs_reply": false,
+    "hard": "positive but flat — a 1, not a 2"
+  },
+  {
+    "external_id": "eval-032",
+    "text": "Muy buen café, gracias.",
+    "category": "praise",
+    "sentiment": 2,
+    "needs_reply": false,
+    "hard": "Spanish praise"
+  },
+  {
+    "external_id": "eval-033",
+    "text": "Respect for publishing the supplier audit in full. Almost nobody does.",
+    "category": "praise",
+    "sentiment": 2,
+    "needs_reply": false,
+    "hard": null
+  },
+  {
+    "external_id": "eval-034",
+    "text": "the decaf is better than most regular coffee I've tried",
+    "category": "praise",
+    "sentiment": 2,
+    "needs_reply": false,
+    "hard": null
+  },
+  {
+    "external_id": "eval-035",
+    "text": "Make $5000/week from home! Click my bio 💰💰",
+    "category": "spam",
+    "sentiment": 0,
+    "needs_reply": false,
+    "hard": null
+  },
+  {
+    "external_id": "eval-036",
+    "text": "FOLLOW ME FOR FREE GIVEAWAYS 🎁🎁🎁",
+    "category": "spam",
+    "sentiment": 0,
+    "needs_reply": false,
+    "hard": null
+  },
+  {
+    "external_id": "eval-037",
+    "text": "Best crypto signals, 300% returns guaranteed, DM now",
+    "category": "spam",
+    "sentiment": 0,
+    "needs_reply": false,
+    "hard": null
+  },
+  {
+    "external_id": "eval-038",
+    "text": "check out my page for cheap designer bags",
+    "category": "spam",
+    "sentiment": 0,
+    "needs_reply": false,
+    "hard": null
+  },
+  {
+    "external_id": "eval-039",
+    "text": "Love your page! I can grow you to 50k followers, link in bio 🚀",
+    "category": "spam",
+    "sentiment": 1,
+    "needs_reply": false,
+    "hard": "opens as praise, is a solicitation; needs_reply must still be false"
+  },
+  {
+    "external_id": "eval-040",
+    "text": "🔥🔥🔥",
+    "category": "other",
+    "sentiment": 2,
+    "needs_reply": false,
+    "hard": "emoji-only, but unambiguously positive"
+  },
+  {
+    "external_id": "eval-041",
+    "text": "😍",
+    "category": "other",
+    "sentiment": 2,
+    "needs_reply": false,
+    "hard": "single emoji"
+  },
+  {
+    "external_id": "eval-042",
+    "text": "👀",
+    "category": "other",
+    "sentiment": 0,
+    "needs_reply": false,
+    "hard": "emoji-only with no clear valence — this one is genuinely a 0"
+  },
+  {
+    "external_id": "eval-043",
+    "text": "commenting so I can find this later",
+    "category": "other",
+    "sentiment": 0,
+    "needs_reply": false,
+    "hard": null
+  },
+  {
+    "external_id": "eval-044",
+    "text": "tagging @priya_makes you need to see this",
+    "category": "other",
+    "sentiment": 1,
+    "needs_reply": false,
+    "hard": null
+  },
+  {
+    "external_id": "eval-045",
+    "text": "lol",
+    "category": "other",
+    "sentiment": 0,
+    "needs_reply": false,
+    "hard": null
+  },
+  {
+    "external_id": "eval-046",
+    "text": "第一次买，包装很好看。",
+    "category": "praise",
+    "sentiment": 1,
+    "needs_reply": false,
+    "hard": "Chinese: 'first time buying, the packaging is lovely' — praise, not other"
+  },
+  {
+    "external_id": "eval-047",
+    "text": "saving this one",
+    "category": "other",
+    "sentiment": 0,
+    "needs_reply": false,
+    "hard": null
+  },
+  {
+    "external_id": "eval-048",
+    "text": "is this the same as the one from last year",
+    "category": "question",
+    "sentiment": 0,
+    "needs_reply": true,
+    "hard": "no question mark, lowercase — still a question"
+  },
+  {
+    "external_id": "eval-049",
+    "text": "second",
+    "category": "other",
+    "sentiment": 0,
+    "needs_reply": false,
+    "hard": "meaningless engagement bait; not spam, because nothing is being sold"
+  }
+]

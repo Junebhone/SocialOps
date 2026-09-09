@@ -35,6 +35,10 @@ include = ["worker*"]
 [tool.ruff]
 line-length = 100
 target-version = "py312"
+# ./data is mounted into this container so `make eval` can read eval.json, but
+# those scripts belong to the api and import its `app` package. Linting them
+# here would sort their imports against a package this container does not have.
+extend-exclude = ["data"]
 
 [tool.ruff.lint]
 select = ["E", "F", "I", "UP", "B", "C4", "SIM"]
