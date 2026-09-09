@@ -53,5 +53,11 @@ ignore_missing_imports = true
 
 [tool.pytest.ini_options]
 asyncio_mode = "auto"
+# The worker_engine fixture is session-scoped. Without these, each test gets a
+# fresh event loop while asyncpg connections stay bound to the loop that opened
+# them, and the failure reads as "another operation is in progress" rather than
+# as a config problem.
+asyncio_default_fixture_loop_scope = "session"
+asyncio_default_test_loop_scope = "session"
 testpaths = ["tests"]
 addopts = "-q"

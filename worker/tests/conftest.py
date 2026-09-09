@@ -26,3 +26,65 @@ for _key, _value in _TEST_ENV.items():
 from pydantic_ai import models  # noqa: E402
 
 models.ALLOW_MODEL_REQUESTS = False
+
+
+from collections.abc import AsyncIterator  # noqa: E402
+
+import pytest  # noqa: E402
+from sqlalchemy import text  # noqa: E402
+from sqlalchemy.engine import make_url  # noqa: E402
+from sqlalchemy.ext.asyncio import (  # noqa: E402
+    AsyncEngine,
+    AsyncSession,
+    async_sessionmaker,
+    create_async_engine,
+)
+
+
+def _worker_test_database_url() -> str:
+    """A database of this worker's own, separate from the api suite's.
+
+    Both suites can run at once (`make test` runs them back to back, but nothing
+    stops them overlapping), and two suites dropping and creating the same
+    database is a race that fails intermittently and looks like flakiness.
+    """
+    url = make_url(os.environ["DATABASE_URL"])
+    return url.set(database=f"{url.database}_worker_test").render_as_string(hide_password=False)
+
+
+@pytest.fixture(scope="session")
+async def worker_engine() -> AsyncIterator[AsyncEngine]:
+    """Schema built with create_all, not alembic.
+
+    The api suite already proves the migration and the models describe the same
+    schema; repeating that here would only be slower. What these tests need is a
+    real Postgres with the real constraints.
+    """
+    from app.models import Base
+
+    admin_url = make_url(os.environ["DATABASE_URL"]).set(database="postgres")
+    admin = create_async_engine(admin_url, isolation_level="AUTOCOMMIT")
+    name = make_url(_worker_test_database_url()).database
+    async with admin.connect() as conn:
+        await conn.execute(text(f'DROP DATABASE IF EXISTS "{name}" WITH (FORCE)'))
+        await conn.execute(text(f'CREATE DATABASE "{name}"'))
+    await admin.dispose()
+
+    engine = create_async_engine(_worker_test_database_url())
+    async with engine.begin() as conn:
+        await conn.run_sync(Base.metadata.create_all)
+    yield engine
+    await engine.dispose()
+
+
+@pytest.fixture
+async def db(worker_engine: AsyncEngine) -> AsyncIterator[AsyncSession]:
+    from app.models import Base
+
+    tables = ", ".join(f'"{name}"' for name in Base.metadata.tables)
+    async with worker_engine.begin() as conn:
+        await conn.execute(text(f"TRUNCATE {tables} RESTART IDENTITY CASCADE"))
+
+    factory = async_sessionmaker(worker_engine, expire_on_commit=False)
+    async with factory() as session:
+        yield session

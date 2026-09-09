@@ -89,11 +89,27 @@ async def _record_run(
     return run.id
 
 
+# A comment whose pipeline finished. Re-running it would re-spend the model
+# calls and write a second draft over the first.
+COMPLETED_STATUSES = frozenset({"drafted", "replied"})
+
+
 @dataclass
 class Ingest(BaseNode[CommentState, None, int]):
-    """Load the comment and its brand context. No model call."""
+    """Load the comment and its brand context, or stop if it is already done.
 
-    async def run(self, ctx: GraphRunContext[CommentState, None]) -> Triage:
+    The early exit is not an optimisation, it is correctness. arq retries a
+    failed job, and step 9's Retry button re-enqueues by hand — without this
+    guard a job that ran once and was retried produces a second triage run and a
+    second reply draft, which double-charges the model and shows the reviewer
+    two drafts for one comment. Measured: an emergency requeue after a disk
+    outage gave 6 comments two drafts and 10 comments two triage runs.
+
+    Returning End here also makes the skip visible in the generated diagram
+    rather than hiding it inside the node.
+    """
+
+    async def run(self, ctx: GraphRunContext[CommentState, None]) -> Triage | End[int]:
         state = ctx.state
         row = (
             await state.session.execute(
@@ -109,6 +125,14 @@ class Ingest(BaseNode[CommentState, None, int]):
             raise LookupError(f"comment {state.comment_id} not found")
 
         comment, brand = row
+        if comment.status in COMPLETED_STATUSES:
+            log.info(
+                "comment.already_processed",
+                comment_id=state.comment_id,
+                status=comment.status,
+            )
+            return End(state.comment_id)
+
         state.comment_text = comment.text
         state.brand_id = brand.id
         state.brand_voice = brand.voice_guidelines
