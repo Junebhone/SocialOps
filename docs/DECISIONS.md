@@ -556,6 +556,43 @@ missing `LLM_MODEL_FAST` fails when the API starts rather than when the first jo
 
 ---
 
+## D23 — Qwen's thinking is disabled on every Ollama tier, via `reasoning_effort` · `SETTLED`
+
+**Decision:** `worker/llm.py` sends `reasoning_effort: "none"` on **every** Ollama call, not
+only on classification calls. Gated on the provider, so Phase 4 Bedrock is unaffected.
+
+**Why:** `CLAUDE.md` asks for thinking-off "on classification calls", implying the `fast` tier
+only. Measured against this Ollama build, that is not enough: **both models run their entire
+output budget as reasoning and return an empty message**. `qwen3.5:2b` asked to classify one
+comment returned `finish_reason: length` with `content: ''`, and `qwen3.5:9b` did the same on a
+two-sentence drafting prompt. Given a 2,000-token budget, 2b produced 2,000 tokens of thinking
+and still no answer. Restricting the fix to `fast` would leave the response, content and media
+agents failing on every call.
+
+**Three mechanisms were tested; only one works through the endpoint Pydantic AI uses:**
+
+| Mechanism | Result |
+|---|---|
+| `{"think": false}` in the request body | Works on Ollama's native `/api/chat`; **silently ignored** on the OpenAI-compatible `/v1`, which is what `OllamaModel` talks to |
+| Qwen's `/no_think` prompt directive | Ignored. Would also have violated hard rule #6 by putting a model-specific token in a prompt |
+| `reasoning_effort: "none"` | **Works.** OpenAI-standard, Ollama maps it through, and Pydantic AI exposes it as `openai_reasoning_effort` |
+
+`PARAMETER think false` in a Modelfile was also tried: `ollama create` rejects it as an unknown
+parameter, so this cannot be pushed down into a model variant and kept out of the code.
+
+**Consequences:** `CLAUDE.md`'s "Pass thinking-off options for Qwen on classification calls"
+understates it — the line should read *all* calls. Measured after the fix: triage on 2b is
+**~850 ms** and a response draft on 9b is **~3.4 s**, against D4's estimates of ~2 s and ~3.5 s.
+Triage is more than twice as fast as assumed, which makes D4's drain arithmetic conservative.
+
+**Revisit when:** the eval set (D5) exists and can measure whether thinking actually buys
+accuracy on the drafting tiers. It is off now because it demonstrably prevented any output at
+all, not because it was judged unhelpful.
+
+**Touches:** `CLAUDE.md` local-models note · `worker/llm.py` · D4's latency estimates.
+
+---
+
 ## Standing assumptions
 
 | # | Assumption | Revisit when |

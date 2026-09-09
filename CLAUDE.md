@@ -178,7 +178,10 @@ OLLAMA_KEEP_ALIVE=30m
 Without these, Ollama tries to hold three models and evicts unpredictably mid-replay.
 Cap Docker Desktop's memory explicitly; 16 GB total is workable but not generous.
 
-Pass thinking-off options for Qwen on classification calls. Cost for Ollama is recorded as 0.
+Pass thinking-off options for Qwen on **every** call, not just classification: both models
+otherwise spend their whole output budget reasoning and return nothing. The mechanism that works
+through Ollama's OpenAI-compatible endpoint is `reasoning_effort: "none"` — see D23.
+Cost for Ollama is recorded as 0.
 
 ## UI design brief
 - Audience: a marketing manager, not a developer. Dense but calm.
