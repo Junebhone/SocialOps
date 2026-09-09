@@ -510,6 +510,52 @@ are discarded — this is why `CLAUDE.md` calls for it, and step 3 must actually
 
 ---
 
+## D21 — `LLM_PROVIDER` is validated against an allowlist · `SETTLED`
+
+**Decision:** `config.py` types `llm_provider` as a named alias,
+`LLMProvider = Literal["ollama", "bedrock"]`, rather than a bare `str`.
+
+**Why:** The stack rule says *"never hardcode a provider"*, and a reviewer flagged the
+`Literal` as naming providers in code. The rule is about which provider *runs* — that is still
+chosen only by the `LLM_PROVIDER` environment variable, so ADR-0002's "one-line env change"
+holds. What the `Literal` adds is a typo-catcher: `LLM_PROVIDER=olama` fails at container start
+with a message naming the field, instead of an hour into a replay on the first model call.
+
+The alias is named rather than inline so `worker/llm.py` can `match` on it exhaustively. Adding
+a third provider is then a two-file edit in which **mypy names the second file** — the model
+factory that has not handled the new case. A bare `str` makes it a one-file edit that compiles
+fine and crashes at runtime. The cost of the allowlist is one line; the cost of removing it is
+a silent failure mode in the exact place Phase 4 does its work.
+
+**Alternative rejected:** widening to `str` and validating inside `llm.py`. It moves the error
+from startup to first use, which is the wrong direction for a config error.
+
+**Touches:** `api/app/config.py` · `worker/worker/config.py` · step 3 in `PROMPTS.md`.
+
+---
+
+## D22 — One `config.py` per service, and only the worker maps tiers · `SETTLED`
+
+**Decision:** `api/app/config.py` and `worker/worker/config.py` both exist. The tier → model map
+(D6) lives **only** in the worker's. The API declares the `LLM_MODEL_*` variables as required but
+never resolves a tier.
+
+**Why:** Hard rule #1 says config is read in *one place*, and `CLAUDE.md`'s repo layout lists
+`config.py` only under `api/app/`. But the API and the worker are separate containers and
+separate installable packages, so a single shared module would need a third package on the
+`PYTHONPATH` of both images — real packaging work in service of a literal reading. The rule's
+target is scattered `os.environ` calls and hostnames written into code; one reader per service
+satisfies that.
+
+The tier map is different: it is the specific thing D6 exists to centralise, and duplicating it
+would give the project two answers to "what does `fast` mean". The worker is the only service
+that calls a model, so it owns the map. The API still *requires* the variables, so a deployment
+missing `LLM_MODEL_FAST` fails when the API starts rather than when the first job runs.
+
+**Touches:** `CLAUDE.md` repo layout (the worker's `config.py` is not listed).
+
+---
+
 ## Standing assumptions
 
 | # | Assumption | Revisit when |

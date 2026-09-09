@@ -11,6 +11,12 @@ from typing import Literal
 
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
+# Mirrors `worker/worker/config.py`. A validation allowlist, not a hardcoded
+# provider — the value is still chosen only by LLM_PROVIDER (ADR-0002, D21). The
+# API declares it so a misconfigured deployment fails at API start, not at the
+# first job an hour into a replay.
+LLMProvider = Literal["ollama", "bedrock"]
+
 
 class Settings(BaseSettings):
     model_config = SettingsConfigDict(env_file=None, extra="ignore")
@@ -21,7 +27,7 @@ class Settings(BaseSettings):
     storage_backend: Literal["local"]
     storage_root: str
 
-    llm_provider: Literal["ollama", "bedrock"]
+    llm_provider: LLMProvider
     llm_model_fast: str
     llm_model_text: str
     llm_model_vision: str

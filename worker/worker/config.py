@@ -16,6 +16,14 @@ from pydantic_settings import BaseSettings, SettingsConfigDict
 
 Tier = Literal["fast", "standard", "vision"]
 
+# The providers this build knows how to construct a model for. This is a validation
+# allowlist, not a hardcoded provider: which one runs is still chosen only by
+# LLM_PROVIDER in the environment (ADR-0002). It is a named alias rather than an
+# inline Literal so `worker/llm.py` can `match` on it exhaustively — adding a third
+# provider then makes mypy point at the factory that has not handled it yet, instead
+# of leaving a typo to surface as a runtime crash on the first model call. See D21.
+LLMProvider = Literal["ollama", "bedrock"]
+
 
 class Settings(BaseSettings):
     model_config = SettingsConfigDict(env_file=None, extra="ignore")
@@ -26,7 +34,7 @@ class Settings(BaseSettings):
     storage_backend: Literal["local"]
     storage_root: str
 
-    llm_provider: Literal["ollama", "bedrock"]
+    llm_provider: LLMProvider
     llm_model_fast: str
     llm_model_text: str
     llm_model_vision: str
