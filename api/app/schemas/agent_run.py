@@ -78,3 +78,9 @@ class AgentRunPage(ORMModel):
     runs: list[AgentRunRead]
     totals: list[AgentTotals]
     total_runs: int
+    # The window the matching runs span. Wall time for a replay is derivable
+    # from the audit trail itself, so measuring it does not depend on a stopwatch
+    # in a script surviving the whole drain — which, on an unattended two-hour
+    # `measure-full`, is not a safe assumption.
+    first_run_at: AwareDatetime | None = None
+    last_run_at: AwareDatetime | None = None

@@ -9,6 +9,12 @@ arithmetic over the database.
 
     python scripts/measure.py data/comments_small.json
     python scripts/measure.py data/viral_post_dump.json --label "replay-full (2,000)"
+    python scripts/measure.py data/comments_small.json --report-only
+
+`--report-only` skips the ingest and reports on the run already in the database,
+which is how you recover the numbers when the poll loop did not survive the
+drain. Wall time comes from the audit trail either way, not from this script's
+stopwatch, so the report does not depend on it having been watching.
 
 Prints a Markdown block. Paste it into the README, or use `make measure`.
 """
@@ -21,6 +27,7 @@ import sys
 import time
 import urllib.error
 import urllib.request
+from datetime import datetime
 from typing import Any
 
 # The API's address as seen from wherever this runs. Overridable because the
@@ -34,10 +41,28 @@ DEFAULT_API = "http://localhost:8000"
 QUIET_POLLS = 3
 POLL_SECONDS = 5
 
+# How many consecutive unreachable polls before giving up on watching. Enough to
+# ride out an API reload; short enough not to hang for an hour on a dead stack.
+MAX_CONSECUTIVE_MISSES = 12
+
 
 def _get(api: str, path: str) -> Any:
     with urllib.request.urlopen(f"{api}{path}", timeout=30) as response:
         return json.loads(response.read())
+
+
+def _get_or_none(api: str, path: str) -> Any:
+    """A single failed poll must not end a two-hour measurement.
+
+    The API restarts on `--reload` whenever a file changes, and a request in
+    flight at that moment gets `RemoteDisconnected`. That killed one run of this
+    script outright, after twenty minutes of draining, while the worker carried
+    on perfectly well — the measurement was the only casualty.
+    """
+    try:
+        return _get(api, path)
+    except (urllib.error.URLError, TimeoutError, ConnectionError, json.JSONDecodeError):
+        return None
 
 
 def _post_json(api: str, path: str, body: Any) -> Any:
@@ -62,9 +87,21 @@ def _drain(api: str) -> tuple[float, int]:
     started = time.monotonic()
     quiet = 0
     peak = 0
+    misses = 0
 
     while quiet < QUIET_POLLS:
-        stats = _get(api, "/queue/stats")
+        stats = _get_or_none(api, "/queue/stats")
+        if stats is None:
+            # Do not count a failed poll as an empty queue. That would end the
+            # drain early and report a wall time far short of the truth.
+            misses += 1
+            if misses > MAX_CONSECUTIVE_MISSES:
+                print("\n  API unreachable for too long; reporting on what is recorded.")
+                break
+            time.sleep(POLL_SECONDS)
+            continue
+
+        misses = 0
         depth = stats["queued"] + stats["running"]
         peak = max(peak, depth)
         quiet = quiet + 1 if depth == 0 else 0
@@ -83,6 +120,27 @@ def _drain(api: str) -> tuple[float, int]:
     # Subtract the confirmation polls; the work was already done when the first
     # empty reading came back.
     return time.monotonic() - started - (QUIET_POLLS - 1) * POLL_SECONDS, peak
+
+
+def _window(api: str, brand_ids: list[int]) -> tuple[str | None, str | None]:
+    """When the first and last recorded run happened, across every brand."""
+    firsts: list[str] = []
+    lasts: list[str] = []
+    for brand_id in brand_ids:
+        page = _get(api, f"/agent_runs?brand_id={brand_id}&limit=1")
+        if page.get("first_run_at"):
+            firsts.append(page["first_run_at"])
+        if page.get("last_run_at"):
+            lasts.append(page["last_run_at"])
+    return (min(firsts) if firsts else None, max(lasts) if lasts else None)
+
+
+def _seconds_between(first: str | None, last: str | None) -> float | None:
+    if not first or not last:
+        return None
+    started = datetime.fromisoformat(first)
+    ended = datetime.fromisoformat(last)
+    return (ended - started).total_seconds()
 
 
 def _totals(api: str, brand_ids: list[int]) -> dict[str, dict[str, Any]]:
@@ -116,6 +174,11 @@ def main() -> None:
     parser.add_argument("dump", help="Path to a comments JSON dump")
     parser.add_argument("--api", default=DEFAULT_API)
     parser.add_argument("--label", default=None, help="How to name this run in the table")
+    parser.add_argument(
+        "--report-only",
+        action="store_true",
+        help="Skip the ingest and report on the run already in the database",
+    )
     args = parser.parse_args()
 
     with open(args.dump) as handle:
@@ -127,18 +190,31 @@ def main() -> None:
         sys.exit("No brands. Run `make seed` first.")
 
     before = _get(args.api, "/queue/stats")["failed"]
+    peak = 0
+    watched: float | None = None
 
-    print(f"Ingesting {len(rows):,} rows from {args.dump} …")
-    result = _post_json(args.api, "/ingest/comments", rows)
-    print(f"  {result}")
+    if args.report_only:
+        result = {"inserted": len(rows), "skipped": 0, "rejected": 0, "enqueued": 0}
+        print("Reporting on the run already recorded; nothing ingested.")
+    else:
+        print(f"Ingesting {len(rows):,} rows from {args.dump} …")
+        result = _post_json(args.api, "/ingest/comments", rows)
+        print(f"  {result}")
 
-    if result["enqueued"] == 0:
-        print("Nothing was enqueued — already ingested. Reset with `make reset` to re-measure.")
-        return
+        if result["enqueued"] == 0:
+            print("Nothing was enqueued — already ingested.")
+            print("Use --report-only to report on it, or `make reset` to measure it again.")
+            return
 
-    print("Draining …")
-    seconds, peak = _drain(args.api)
+        print("Draining …")
+        watched, peak = _drain(args.api)
+
     totals = _totals(args.api, brand_ids)
+    first, last = _window(args.api, brand_ids)
+    recorded = _seconds_between(first, last)
+    # The audit trail is authoritative: it is what actually happened, and it does
+    # not care whether this script was watching. The stopwatch is the fallback.
+    seconds = recorded if recorded is not None else (watched or 0.0)
     after = _get(args.api, "/queue/stats")["failed"]
 
     runs = sum(row["runs"] for row in totals.values())
@@ -150,7 +226,9 @@ def main() -> None:
     print()
     print(f"- Ingested **{result['inserted']:,}** comments "
           f"({result['skipped']:,} already present, {result['rejected']:,} rejected to the DLQ)")
-    print(f"- Wall time **{seconds / 60:.1f} min** ({seconds:.0f}s), peak queue depth {peak:,}")
+    source = "first to last recorded run" if recorded is not None else "measured by this script"
+    peak_note = f", peak queue depth {peak:,}" if peak else ""
+    print(f"- Wall time **{seconds / 60:.1f} min** ({seconds:.0f}s, {source}){peak_note}")
     print(f"- **{runs:,}** agent runs, **{tokens_in + tokens_out:,}** tokens "
           f"({tokens_in:,} in / {tokens_out:,} out)")
     print(f"- Dead-lettered during this run: **{after - before}**")

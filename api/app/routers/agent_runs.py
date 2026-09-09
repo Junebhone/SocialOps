@@ -116,9 +116,30 @@ async def list_agent_runs(
         )
     ).all()
 
+    # The window those runs span. Wall time for a replay comes from the audit
+    # trail rather than from a stopwatch in a script, so it survives the script
+    # not surviving — which on an unattended two-hour run is the normal case.
+    window = (
+        await session.execute(
+            _filtered(
+                select(
+                    func.min(AgentRun.created_at).label("first"),
+                    func.max(AgentRun.created_at).label("last"),
+                ),
+                brand_id,
+                agent,
+                status,
+                entity_type,
+                entity_id,
+            )
+        )
+    ).one()
+
     return AgentRunPage(
         runs=list(rows),
         totals=list(totals),
         # The number the table is a page OF, so "showing 100 of 485" is honest.
         total_runs=sum(row.runs for row in totals),
+        first_run_at=window.first,
+        last_run_at=window.last,
     )

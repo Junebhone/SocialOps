@@ -212,3 +212,34 @@ async def test_newest_run_first(client: AsyncClient, session: AsyncSession) -> N
     body = (await client.get("/agent_runs", params={"brand_id": brand.id})).json()
 
     assert [run["id"] for run in body["runs"]] == [second.id, first.id]
+
+
+async def test_the_page_reports_the_window_its_runs_span(
+    client: AsyncClient, session: AsyncSession
+) -> None:
+    """Wall time for a replay is derivable from the audit trail, so measuring it
+    does not depend on a stopwatch in a script surviving the whole drain. One
+    run of `scripts/measure.py` died to a dropped poll twenty minutes in while
+    the worker carried on fine; the numbers were still recoverable from here."""
+    brand = await a_brand(session)
+    first = await agent_run(session, brand, "triage")
+    last = await agent_run(session, brand, "response")
+
+    body = (await client.get("/agent_runs", params={"brand_id": brand.id})).json()
+
+    assert body["first_run_at"] is not None
+    assert body["last_run_at"] is not None
+    assert body["first_run_at"] <= body["last_run_at"]
+    assert first.id < last.id
+
+
+async def test_the_window_is_empty_when_nothing_has_run(
+    client: AsyncClient, session: AsyncSession
+) -> None:
+    """Null, not an epoch. A brand with no runs has no window."""
+    brand = await a_brand(session)
+
+    body = (await client.get("/agent_runs", params={"brand_id": brand.id})).json()
+
+    assert body["first_run_at"] is None
+    assert body["last_run_at"] is None
