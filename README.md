@@ -165,16 +165,14 @@ make seed        # 2 brands, 6 accounts, 20 posts — re-runnable
 Verify it:
 
 ```bash
-docker compose ps                      # five containers, all five healthchecked
-open http://localhost:8000/health      # {"status":"ok", ...}
-open http://localhost:8000/docs        # OpenAPI
-open http://localhost:3000/inbox       # comments, drafts, approvals
-open http://localhost:3000/content     # uploads, analysis, platform drafts
+docker compose ps                          # five containers, all five (healthy)
+curl -s localhost:8000/health/ready        # {"status":"ok","database":true,"redis":true}
 ```
 
-`/health` answers "is the process up" and deliberately does not touch the database, so a healthy
-API can still be sitting on a stopped Postgres. If every endpoint 500s while `docker compose ps`
-looks fine, check `docker compose logs postgres` first.
+Use **`/health/ready`**, not `/health`. Liveness answers "is the process up" and touches nothing —
+it stays green in front of a stopped Postgres, which is exactly how a full disk once presented as
+four healthy services and every endpoint returning 500 ([D28](docs/DECISIONS.md)). Readiness pings
+Postgres and Redis and returns 503 naming whichever is down.
 
 `GET /docs` lists every endpoint. Every **list** endpoint requires a `brand_id`
 query parameter — the API is stateless, so scope lives in the URL and a shared
@@ -182,32 +180,13 @@ link resolves to the same view. Three do not, and are not meant to: `/brands`,
 which is the list you pick a brand from, and `/queue/stats` and `/failed_jobs`,
 which are operational and have no brand to scope by.
 
-Drive the two pipelines:
-
-```bash
-make replay      # 300 comments -> triage -> response -> drafts in the Inbox
-make eval        # triage accuracy over the 50 labeled comments
-
-# Upload one product photo: media analysis + three platform drafts.
-curl -F "file=@data/sample_images/ridgeline_beans_flatlay.png" \
-     "http://localhost:8000/assets?brand_id=2"
-```
-
-The upload returns immediately with `enqueued: true`; the worker then runs
-`media` and `content` against `qwen3.5:9b` and writes three `content_drafts`.
-Watch it with `make logs`. On a warm model that is roughly 15–35 s end to end —
-the first upload after an idle gap pays for a 6.6 GB model load on top.
-
-The sample images in `data/sample_images/` are Pillow-drawn shapes, not
-photographs (synthetic data only). The vision agent describes them accurately,
-which means the brand check usually fails on "logo visible" — that is the agent
-working, not a bug.
-
-Or run the whole demo path in order:
+Or run the whole demo path in one command:
 
 ```bash
 make demo    # preflight, reset, seed, upload one photo, replay 300, print URLs
 ```
+
+`make demo` **deletes the database volume**. Use `make demo --keep` to leave existing data alone.
 
 Day-to-day:
 
@@ -217,13 +196,196 @@ make lint      # ruff + mypy (python), eslint (web)
 make logs      # follow api and worker
 make measure   # time a 300-comment replay, print the numbers below
 make diagrams  # re-render the pipeline diagrams from the graph definitions
-make down
+make prune     # reclaim Docker disk (dangling images + build cache only)
+make down      # stop everything, keep the data
 ```
 
 How it fits together — containers, both pipelines, the failure path, and what
 Phase 2+ actually changes — is in
 [docs/architecture-phase1.md](docs/architecture-phase1.md). The two pipeline
 diagrams there are generated from the `pydantic-graph` definitions, not drawn.
+
+### Open it
+
+Three pages, all scoped by `brand_id` in the URL ([D17](docs/DECISIONS.md)). Landing on
+`localhost:3000` redirects to the Inbox and picks a brand for you; the top bar has a selector.
+
+| Page | What is on it |
+| --- | --- |
+| [`/inbox?brand_id=1`](http://localhost:3000/inbox?brand_id=1) | Comments with category, sentiment, urgency and the drafted reply. Hover a row for Approve / Edit / Reject, or tick several and use **Approve selected**. |
+| [`/content?brand_id=1`](http://localhost:3000/content?brand_id=1) | Drop a photo in. One card per asset: the image, what the vision agent saw, the brand check, and three platform captions side by side. |
+| [`/agents?brand_id=1`](http://localhost:3000/agents?brand_id=1) | Every model call — tokens, cost, p50/p95 — plus per-agent totals and the Failed Jobs panel. Click any entity link to see one comment end to end. |
+| [`localhost:8000/docs`](http://localhost:8000/docs) | OpenAPI for every endpoint. |
+
+Which brand is which id depends on seed order, so look it up rather than guessing:
+
+```bash
+curl -s localhost:8000/brands | jq -r '.[] | "\(.id)\t\(.name)"'
+```
+
+### Feed it new comments
+
+`make replay` is **idempotent** ([D9](docs/DECISIONS.md)) — that is the point, so a repeated
+2,000-comment dump costs nothing. It also means running it twice inserts nothing the second time
+and you will see `{"inserted":0,"skipped":300}`. To see work happen, give it rows it has not seen.
+
+**Write your own.** The most direct way to watch the pipeline think:
+
+```bash
+curl -X POST http://localhost:8000/ingest/comments \
+  -H "Content-Type: application/json" \
+  -d '[{
+    "external_id": "test-001",
+    "post_external_id": "post-0-0",
+    "account_handle": "@ridgelineroasters",
+    "author": "@you",
+    "text": "Do you ship to Singapore, and how fresh are the beans on arrival?",
+    "created_at": "2026-09-09T21:00:00+00:00"
+  }]'
+```
+
+Returns `{"inserted":1,"skipped":0,"enqueued":1,"rejected":0}` at once; the agents finish in
+15–30 s. `external_id` must be new — reusing one is a deliberate no-op. `account_handle` and
+`post_external_id` must match seeded rows or the row is counted as `skipped`, which is a data
+problem rather than a transient one, so it is counted rather than retried:
+
+| Brand | `account_handle` | `post_external_id` |
+| --- | --- | --- |
+| Ridgeline Roasters (coffee) | `@ridgelineroasters` | `post-0-0` |
+| Fieldnote Skin (skincare) | `@fieldnoteskin` | `post-1-0` |
+
+Keep the comment on-topic for its brand. A coffee question posted under a skincare post once drew
+the reply *"we do not carry coffee, only skincare formulations"* — the model being right about data
+that was wrong.
+
+**Feed more of the pre-generated dump.** `viral_post_dump.json` holds 2,000 rows and `make replay`
+only uses the 300 in `comments_small.json`, so there is plenty left:
+
+```bash
+python3 -c "
+import json,urllib.request
+rows=json.load(open('data/viral_post_dump.json'))[100:150]
+r=urllib.request.Request('http://localhost:8000/ingest/comments',
+  data=json.dumps(rows).encode(),headers={'Content-Type':'application/json'})
+print(urllib.request.urlopen(r).read().decode())"
+```
+
+Change the slice to taste. At ~10 s per comment, 50 rows is roughly 8 minutes.
+
+**CSV works too** — same six columns:
+
+```bash
+curl -X POST -H "Content-Type: text/csv" \
+     --data-binary @mine.csv http://localhost:8000/ingest/comments
+```
+
+#### Where a new comment goes
+
+| When | State | Where you can see it |
+| --- | --- | --- |
+| immediately | `comments` row, `status: new` | **All** tab only — no draft yet |
+| ~5 s | triaged; category, sentiment, urgency set | **All** tab, badges filled, *"Waiting for the agent"* |
+| ~15–30 s | `reply_drafts` row, `status: pending` | **Needs review** tab, top of the list |
+| you approve | `outbox` row written | badge flips to `approved` |
+| ≤30 s later | worker drains the outbox | badge flips to `published`, moves to **Published** |
+
+The Inbox opens on **Needs review**, which filters `status = drafted`. For the first ~15 seconds a
+new comment is not in that view — it is not lost, it is still being processed. Switch to **All** to
+watch it move, or watch the `queued` / `running` counters in the top bar.
+
+The Inbox sorts newest-first by the comment's own `created_at`, so anything you write with a recent
+date lands at the top, above the seeded data (dated from 2026-08-01).
+
+### Feed it a photo
+
+```bash
+BRAND=$(curl -s localhost:8000/brands | jq -r '.[0].id')
+curl -sf -F "file=@data/sample_images/ridgeline_beans_flatlay.png" \
+     "http://localhost:8000/assets?brand_id=$BRAND" | jq .
+```
+
+Or drag one onto the Content page. Returns `enqueued: true` at once; the worker then runs `media`
+and `content` against `qwen3.5:9b` and writes three `content_drafts`. Roughly 15–35 s on a warm
+model — the first upload after an idle gap also pays for a 6.6 GB model load. PNG, JPEG and WebP,
+up to 10 MB.
+
+The images in `data/sample_images/` are Pillow-drawn shapes, not photographs (synthetic data only).
+The vision agent describes them accurately, which means the brand check usually fails on "logo
+visible" — that is the agent working, not a bug. Drop in a real product photo for a better demo.
+
+### Things worth trying deliberately
+
+- **Spam.** Post `"check out my page, free followers"`. Triage should return `needs_reply: false`
+  and the drafting call is **skipped entirely** — that branch is an `if`, not a model decision
+  ([D12](docs/DECISIONS.md)). The Agents page will show one triage run for it and no response run.
+- **Sarcasm.** *"Great, another price rise. Love that."* This is where a 2B classifier is weakest;
+  `docs/eval.md` has the measured accuracy.
+- **A refund demand.** Should come back `complaint / hostile / high`.
+- **Batch approval.** Tick ten rows and use Approve selected, then watch them flip to `published`
+  within 30 s as the outbox drains — that is the loop closing ([D3](docs/DECISIONS.md)).
+- **Cost per comment.** On the Agents page, click a `comment 123` link to see every model call that
+  one comment caused, which is what [D7](docs/DECISIONS.md) restructured the audit table to answer.
+- **A hallucination.** Ask something the brand never told it — *"how fresh are the beans?"* drew
+  *"within a week of roasting"*, a fact nobody supplied. The prompt forbids inventing facts and the
+  model still did. This is what the human-approval gate is for.
+- **The dead-letter queue.** Post a row with `"created_at": "not-a-date"`. That row alone is
+  rejected and appears in the Failed Jobs panel with the reason; every other row in the same
+  payload still processes ([D27](docs/DECISIONS.md)). The panel offers **Discard** rather than
+  Retry for it, because re-running a malformed row cannot succeed ([D30](docs/DECISIONS.md)).
+
+### Where the data comes from
+
+All synthetic. No social platform is contacted anywhere in Phase 1.
+
+| File | What it is |
+| --- | --- |
+| `data/comments_small.json` | 300 comments — the `make replay` demo path |
+| `data/viral_post_dump.json` | 2,000 comments for `make replay-full`, including one deliberately malformed row |
+| `data/eval.json` | 50 of them **hand-labelled** with the correct category, sentiment and `needs_reply` — the only evidence the 2B triage model is good enough |
+| `data/sample_images/` | 5 Pillow-drawn PNGs |
+
+The JSON is generated once by `data/generate_comments.py` and committed; the same seed reproduces it
+byte-identically, so an `external_id` already ingested never changes meaning. Comment text is
+hand-written templates rather than Faker prose — triage has to classify these, and lorem has no
+category signal, so a model would be graded on noise. Faker supplies only what should genuinely
+vary: names, handles, dates, order numbers. The mix targets ~40% question, 25% praise, 20%
+complaint, 10% spam, 5% other.
+
+`make seed` creates the brands, accounts and posts those comments attach to. It is re-runnable.
+
+### Stop and restart
+
+```bash
+make down             # stop, keep the data
+docker compose stop   # pause without removing containers — fastest restart
+make up               # start again; data is still there
+```
+
+Closing the browser does nothing to the stack — the containers are detached and the worker keeps
+draining. Ollama runs on the **host**, so `make down` does not stop it; quit it separately to
+unload the ~9 GB of models.
+
+`docker compose down -v` deletes the database volume. That is the only command here that loses data.
+
+### If something looks wrong
+
+```bash
+docker compose ps                      # all five should say (healthy)
+curl -s localhost:8000/health/ready    # names the dependency that is down
+make logs                              # follow api + worker, structured JSON
+docker compose logs postgres           # check here first if every endpoint 500s
+make prune                             # reclaim Docker disk
+```
+
+Every log line carries a `request_id` (API) or `job_id` (worker), so one comment can be traced from
+the HTTP request through to the model calls it caused.
+
+A stuck comment — `status: new` long after ingest — usually means its job was lost. `POST
+/queue/requeue` re-enqueues every comment still at `new` and every asset with no analysis:
+
+```bash
+curl -X POST localhost:8000/queue/requeue
+```
 
 ### Measured
 
