@@ -87,8 +87,11 @@ services:
       context: ./web
     command: npm run dev -- --hostname 0.0.0.0 --port 3000
     environment:
-      # Browser-side calls hit the API through the host port mapping, not the compose network.
-      NEXT_PUBLIC_API_URL: ${NEXT_PUBLIC_API_URL:-http://localhost:8000}
+      # Browser-side calls hit the API through the host port mapping, not the compose
+      # network — the browser cannot resolve `api:8000`. Required with no inline default,
+      # so the address is configuration rather than a hostname written into a file
+      # (hard rule #1). It is set in .env.example.
+      NEXT_PUBLIC_API_URL: ${NEXT_PUBLIC_API_URL:?set NEXT_PUBLIC_API_URL in .env}
       WATCHPACK_POLLING: "true"
     ports:
       - "${WEB_PORT:-3000}:3000"
