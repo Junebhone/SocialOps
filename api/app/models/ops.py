@@ -47,8 +47,10 @@ class AgentRun(Base):
     entity_id: Mapped[int] = mapped_column(BigInteger)
     # Denormalized (D7): per-brand cost otherwise needs a four-table join.
     brand_id: Mapped[int] = mapped_column(BigInteger, ForeignKey("brands.id", ondelete="CASCADE"))
-    # NULL on a failed run — there is no output to record.
-    output_json: Mapped[dict[str, Any] | None] = mapped_column(JSONB)
+    # NULL on a failed run — there is no output to record. See the note on
+    # assets.analysis_json: without none_as_null a failed run would store JSON
+    # `'null'` and "which runs produced no output" would never match it.
+    output_json: Mapped[dict[str, Any] | None] = mapped_column(JSONB(none_as_null=True))
     status: Mapped[AgentRunStatus] = mapped_column(String(16))
     input_tokens: Mapped[int] = mapped_column(Integer)
     output_tokens: Mapped[int] = mapped_column(Integer)

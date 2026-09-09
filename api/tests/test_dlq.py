@@ -246,3 +246,56 @@ async def test_an_unretryable_job_type_says_so(
 
     assert response.status_code == 422
     assert "Cannot retry" in response.json()["detail"]
+
+
+# --- batching must not change the contract ---------------------------------
+
+
+async def test_a_duplicate_inside_one_payload_is_inserted_once(
+    client: AsyncClient, session: AsyncSession
+) -> None:
+    """The insert is one statement now, not one per row. Within a single
+    statement only the first insert is visible to a later row's ON CONFLICT
+    check, so an in-batch duplicate would slip past the unique constraint —
+    deduplicated before the statement is built instead."""
+    await _brand_and_post(client)
+
+    body = (await client.post("/ingest/comments", json=[_row("c-1"), _row("c-1")])).json()
+
+    assert body["inserted"] == 1
+    assert body["skipped"] == 1
+    assert len((await session.execute(select(Comment))).scalars().all()) == 1
+
+
+async def test_a_large_payload_still_reports_honest_counts(
+    client: AsyncClient, session: AsyncSession
+) -> None:
+    """Chunked at 1,000 rows because Postgres caps a statement at 65,535 bind
+    parameters and each row uses five. The counts must not care."""
+    await _brand_and_post(client)
+    rows = [_row(f"c-{n}") for n in range(1200)]
+
+    first = (await client.post("/ingest/comments", json=rows)).json()
+    second = (await client.post("/ingest/comments", json=rows)).json()
+
+    assert first == {"inserted": 1200, "skipped": 0, "enqueued": 1200, "rejected": 0}
+    assert second == {"inserted": 0, "skipped": 1200, "enqueued": 0, "rejected": 0}
+
+
+async def test_an_unanalysed_asset_can_be_recovered(
+    client: AsyncClient, session: AsyncSession, queue: FakeQueue
+) -> None:
+    """The asset row is committed before its job is enqueued — it has to be, or
+    the worker beats its own row to the database. A Redis blip in between left a
+    row with no job and no DLQ entry, because no job ever existed, and the card
+    read "Analysing the photo…" forever."""
+    from tests.factories import a_brand, an_asset
+
+    brand = await a_brand(session)
+    asset = await an_asset(session, brand, analysis=None)
+
+    body = (await client.post("/queue/requeue")).json()
+
+    assert body["requeued"] == 1
+    assert [fn for fn, _args in queue.jobs.values()] == ["process_asset"]
+    assert [args for _fn, args in queue.jobs.values()] == [(asset.id,)]

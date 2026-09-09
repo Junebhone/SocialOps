@@ -35,7 +35,7 @@ from app.routers import (
     posts,
     reply_drafts,
 )
-from app.services.queue import redis_pool
+from app.services import queue as queue_service
 
 configure_logging()
 
@@ -154,5 +154,9 @@ async def _ping_database(session: AsyncSession) -> None:
 
 
 async def _ping_redis() -> None:
-    async with redis_pool() as redis:
+    # Resolved through the module, not imported by name: the test suite's
+    # autouse guard patches `app.services.queue.redis_pool`, and a
+    # `from ... import redis_pool` here would bind past it and open a real
+    # connection to the shared Redis from a test.
+    async with queue_service.redis_pool() as redis:
         await redis.ping()

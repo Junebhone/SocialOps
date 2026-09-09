@@ -165,7 +165,7 @@ make seed        # 2 brands, 6 accounts, 20 posts — re-runnable
 Verify it:
 
 ```bash
-docker compose ps                      # five containers, postgres/redis/api healthy
+docker compose ps                      # five containers, all five healthchecked
 open http://localhost:8000/health      # {"status":"ok", ...}
 open http://localhost:8000/docs        # OpenAPI
 open http://localhost:3000/inbox       # comments, drafts, approvals
@@ -176,9 +176,11 @@ open http://localhost:3000/content     # uploads, analysis, platform drafts
 API can still be sitting on a stopped Postgres. If every endpoint 500s while `docker compose ps`
 looks fine, check `docker compose logs postgres` first.
 
-`GET /docs` lists every endpoint. All of them except `/brands` require a
-`brand_id` query parameter — the API is stateless, so scope lives in the URL and
-a shared link resolves to the same view.
+`GET /docs` lists every endpoint. Every **list** endpoint requires a `brand_id`
+query parameter — the API is stateless, so scope lives in the URL and a shared
+link resolves to the same view. Three do not, and are not meant to: `/brands`,
+which is the list you pick a brand from, and `/queue/stats` and `/failed_jobs`,
+which are operational and have no brand to scope by.
 
 Drive the two pipelines:
 

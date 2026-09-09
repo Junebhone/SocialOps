@@ -84,6 +84,21 @@ export function Agents() {
     router.push(`/agents?${next}`);
   };
 
+  /**
+   * Both entity keys, cleared in one push.
+   *
+   * Calling setParam twice does not work: each call builds its URLSearchParams
+   * from the same `params` snapshot this render closed over, so the second push
+   * re-adds the key the first one removed — the button dropped entity_id and
+   * left the filter on.
+   */
+  const clearEntity = () => {
+    const next = new URLSearchParams(params.toString());
+    next.delete("entity_type");
+    next.delete("entity_id");
+    router.push(`/agents?${next}`);
+  };
+
   if (!brandId) {
     return <Empty title="No brand selected" body="Pick a brand in the top bar to see its runs." />;
   }
@@ -110,10 +125,7 @@ export function Agents() {
             size="sm"
             variant="outline"
             className="ml-2"
-            onClick={() => {
-              setParam("entity_type", null);
-              setParam("entity_id", null);
-            }}
+            onClick={clearEntity}
           >
             {entityType} {entityId} — clear
           </Button>

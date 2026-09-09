@@ -22,8 +22,19 @@ class Asset(Base):
     # the Phase 4 move to S3 needs no data migration (hard rule #9).
     storage_key: Mapped[str] = mapped_column(String(512))
     mime: Mapped[str] = mapped_column(String(128))
-    # NULL until the media agent runs.
-    analysis_json: Mapped[dict[str, Any] | None] = mapped_column(JSONB)
+    # NULL until the media agent runs, and NULL is the marker both the
+    # orchestrator's idempotency guard and the requeue recovery path read.
+    #
+# `none_as_null=True` is not decoration. SQLAlchemy's JSON types render an
+# ASSIGNED Python `None` as JSON `'null'`, not SQL NULL — so `column = None`
+# stores a value, and `WHERE column IS NULL` then never matches it. Measured:
+# an asset written with `analysis_json=None` stored `'null'::jsonb`, and the
+# recovery query for unanalysed assets silently found nothing.
+#
+# For both of these columns NULL means "not produced yet", and there is no such
+# thing as an analysis or an output whose legitimate value is JSON null, so the
+# two must not be distinguishable.
+    analysis_json: Mapped[dict[str, Any] | None] = mapped_column(JSONB(none_as_null=True))
 
 
 class ContentDraft(Base):

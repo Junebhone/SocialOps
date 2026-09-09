@@ -39,10 +39,12 @@ from app.models import (
     Post,
     ReplyDraft,
 )
+from pydantic import BaseModel
 from pydantic_graph import BaseNode, End, GraphBuilder, GraphRunContext
 from sqlalchemy import select
-from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
+from worker.agents.base import BaseAgent
 from worker.agents.content import ContentAgent
 from worker.agents.media import MediaAgent
 from worker.agents.response import ResponseAgent
@@ -75,6 +77,7 @@ class AuditableState(Protocol):
     """
 
     session: AsyncSession
+    audit_factory: async_sessionmaker[AsyncSession] | None
     brand_id: int
     agents_run: list[str]
 
@@ -93,6 +96,9 @@ class CommentState:
 
     comment_id: int
     session: AsyncSession
+    # Used only for the failure row (see `_run_agent`), which has to outlive the
+    # rollback that `session_scope` performs so arq can retry cleanly.
+    audit_factory: async_sessionmaker[AsyncSession] | None = None
 
     # Filled by Ingest.
     brand_id: int = 0
@@ -134,7 +140,23 @@ async def _record_run(
     end to end" query — and two copies of this would drift in exactly the field
     that makes the join work.
     """
-    run = AgentRun(
+    run = _build_run(state, agent, output, usage, status, error)
+    state.session.add(run)
+    await state.session.flush()
+    state.agents_run.append(agent)
+    return run.id
+
+
+def _build_run(
+    state: AuditableState,
+    agent: str,
+    output: dict[str, object] | None,
+    usage: Usage | None,
+    status: str,
+    error: str | None,
+) -> AgentRun:
+    """One shape for the row, whichever session ends up writing it."""
+    return AgentRun(
         agent=agent,
         entity_type=state.entity_type,
         entity_id=state.entity_id,
@@ -143,14 +165,71 @@ async def _record_run(
         status=status,
         input_tokens=usage.input_tokens if usage else 0,
         output_tokens=usage.output_tokens if usage else 0,
+        # NULL rather than 0 on a failure. The call may well have spent tokens
+        # before it died; we do not know how many, and "unknown" is a different
+        # fact from "free" — the same distinction D15 draws for cost.
         cost_usd=usage.cost_usd if usage else None,
         latency_ms=usage.latency_ms if usage else 0,
         error=error,
     )
-    state.session.add(run)
-    await state.session.flush()
+
+
+async def _run_agent[InputT: BaseModel, OutputT: BaseModel](
+    state: AuditableState,
+    name: str,
+    agent: BaseAgent[InputT, OutputT],
+    payload: InputT,
+) -> tuple[OutputT, int]:
+    """Call one agent and write its audit row, whichever way the call goes.
+
+    Hard rule #5 says every agent *invocation* writes a row, not every
+    successful one — `agent_runs.status` and `agent_runs.error` exist for
+    precisely this, and "which runs failed" is one of the two questions D7
+    restructured the table to answer. Before this wrapper the error path wrote
+    nothing at all, so both columns were unreachable and the Agents page had a
+    status filter for a value nothing could produce.
+
+    The failure row is written on its OWN session. `session_scope` is about to
+    roll the job's session back so arq can retry from a clean slate, and a row
+    added to it would be discarded along with everything else — the same reason
+    `_record_failure` in main.py opens its own session for the DLQ write.
+    """
+    try:
+        output, usage = await agent.run_with_usage(payload)
+    except Exception as exc:
+        await _record_failed_run(state, name, exc)
+        raise
+
+    run_id = await _record_run(state, name, output.model_dump(), usage, "ok")
+    return output, run_id
+
+
+async def _record_failed_run(state: AuditableState, agent: str, exc: Exception) -> None:
+    """Persist the failure independently of the job's transaction.
+
+    Best-effort by design: if this write itself fails, the original agent error
+    is the one worth propagating, and swallowing it to report a bookkeeping
+    problem would hide the actual cause from `failed_jobs`.
+    """
+    detail = f"{type(exc).__name__}: {exc}"[:2000]
+    log.warning("agent.failed", agent=agent, entity=state.entity_type,
+                entity_id=state.entity_id, error=detail)
+
+    if state.audit_factory is None:
+        # No factory: a test driving the graph directly on one session. Writing
+        # there is the best available, and nothing rolls it back.
+        state.session.add(_build_run(state, agent, None, None, "error", detail))
+        await state.session.flush()
+        state.agents_run.append(agent)
+        return
+
+    try:
+        async with state.audit_factory() as session:
+            session.add(_build_run(state, agent, None, None, "error", detail))
+            await session.commit()
+    except Exception:
+        log.exception("agent.failure_not_recorded", agent=agent)
     state.agents_run.append(agent)
-    return run.id
 
 
 # A comment whose pipeline finished. Re-running it would re-spend the model
@@ -217,10 +296,9 @@ class Triage(BaseNode[CommentState, None, int]):
 
     async def run(self, ctx: GraphRunContext[CommentState, None]) -> Respond | Persist:
         state = ctx.state
-        output, usage = await TriageAgent().run_with_usage(
-            TriageInput(comment_text=state.comment_text)
+        output, _run_id = await _run_agent(
+            state, "triage", TriageAgent(), TriageInput(comment_text=state.comment_text)
         )
-        await _record_run(state, "triage", output.model_dump(), usage, "ok")
 
         state.triage = output
         comment = await state.session.get(Comment, state.comment_id)
@@ -241,15 +319,15 @@ class Respond(BaseNode[CommentState, None, int]):
 
     async def run(self, ctx: GraphRunContext[CommentState, None]) -> Persist:
         state = ctx.state
-        output, usage = await ResponseAgent().run_with_usage(
+        output, state.reply_agent_run_id = await _run_agent(
+            state,
+            "response",
+            ResponseAgent(),
             ResponseInput(
                 comment_text=state.comment_text,
                 brand_voice=state.brand_voice,
                 avoid_words=state.avoid_words,
-            )
-        )
-        state.reply_agent_run_id = await _record_run(
-            state, "response", output.model_dump(), usage, "ok"
+            ),
         )
         state.reply_text = output.reply_text
         return Persist()
@@ -311,6 +389,7 @@ class AssetState:
 
     asset_id: int
     session: AsyncSession
+    audit_factory: async_sessionmaker[AsyncSession] | None = None
 
     # Filled by IngestAsset.
     brand_id: int = 0
@@ -413,15 +492,17 @@ class Media(BaseNode[AssetState, None, int]):
 
     async def run(self, ctx: GraphRunContext[AssetState, None]) -> Content:
         state = ctx.state
-        output, usage = await MediaAgent().run_with_usage(
+        output, _run_id = await _run_agent(
+            state,
+            "media",
+            MediaAgent(),
             MediaInput(
                 image_data=state.image_data,
                 image_media_type=state.image_media_type,
                 prohibited_content=state.prohibited_content,
                 required_elements=state.required_elements,
-            )
+            ),
         )
-        await _record_run(state, "media", output.model_dump(), usage, "ok")
 
         state.analysis = output
         asset = await state.session.get(Asset, state.asset_id)
@@ -444,7 +525,10 @@ class Content(BaseNode[AssetState, None, int]):
     async def run(self, ctx: GraphRunContext[AssetState, None]) -> PersistContent:
         state = ctx.state
         analysis = state.analysis
-        output, usage = await ContentAgent().run_with_usage(
+        output, state.content_agent_run_id = await _run_agent(
+            state,
+            "content",
+            ContentAgent(),
             ContentInput(
                 description=analysis.description if analysis else "",
                 detected_text=_rule_list(analysis.detected_text if analysis else []),
@@ -452,10 +536,7 @@ class Content(BaseNode[AssetState, None, int]):
                 avoid_words=state.avoid_words,
                 prefer_words=state.prefer_words,
                 max_hashtags=state.max_hashtags,
-            )
-        )
-        state.content_agent_run_id = await _record_run(
-            state, "content", output.model_dump(), usage, "ok"
+            ),
         )
         state.drafts = output.drafts
         return PersistContent()
@@ -541,18 +622,31 @@ comment_graph = _build_comment_graph()
 asset_graph = _build_asset_graph()
 
 
-async def run_comment(comment_id: int, session: AsyncSession) -> CommentState:
-    """The comment entry point. arq calls this; nothing else knows the graph exists."""
-    state = CommentState(comment_id=comment_id, session=session)
+async def run_comment(
+    comment_id: int,
+    session: AsyncSession,
+    audit_factory: async_sessionmaker[AsyncSession] | None = None,
+) -> CommentState:
+    """The comment entry point. arq calls this; nothing else knows the graph exists.
+
+    `audit_factory` is only used to write an agent's failure row on a session
+    that survives this job's rollback. Optional so a test can drive the graph
+    with a single session.
+    """
+    state = CommentState(comment_id=comment_id, session=session, audit_factory=audit_factory)
     # The start edge carries the first node as its input, so the entry node is
     # passed via `inputs` rather than positionally.
     await comment_graph.run(state=state, inputs=Ingest())  # type: ignore[attr-defined]
     return state
 
 
-async def run_asset(asset_id: int, session: AsyncSession) -> AssetState:
+async def run_asset(
+    asset_id: int,
+    session: AsyncSession,
+    audit_factory: async_sessionmaker[AsyncSession] | None = None,
+) -> AssetState:
     """The asset entry point. Same shape as `run_comment`, deliberately."""
-    state = AssetState(asset_id=asset_id, session=session)
+    state = AssetState(asset_id=asset_id, session=session, audit_factory=audit_factory)
     await asset_graph.run(state=state, inputs=IngestAsset())  # type: ignore[attr-defined]
     return state
 

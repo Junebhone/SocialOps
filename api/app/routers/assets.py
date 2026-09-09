@@ -71,9 +71,20 @@ async def upload_asset(
             detail=f"Unsupported type {mime or 'unknown'}. Allowed: {', '.join(ALLOWED_MIME)}",
         )
 
+    # Checked BEFORE reading. `await file.read()` pulls the whole body into
+    # memory, so a limit applied afterwards bounds nothing that matters — a
+    # 2 GB upload is already resident by the time it is rejected. Starlette
+    # populates `.size` from the multipart parser as it spools.
+    if file.size is not None and file.size > MAX_UPLOAD_BYTES:
+        raise HTTPException(
+            status_code=413,
+            detail=f"File is {file.size} bytes; the limit is {MAX_UPLOAD_BYTES}",
+        )
+
     data = await file.read()
     if not data:
         raise HTTPException(status_code=422, detail="The uploaded file is empty")
+    # Belt and braces for a client that sent no size the parser could use.
     if len(data) > MAX_UPLOAD_BYTES:
         raise HTTPException(
             status_code=413,
@@ -109,11 +120,24 @@ async def list_assets(
     drafts yet is still on the page — that is the "analysing" card — so the join
     has to be outer, and a page of 50 assets must not become 51 round trips.
     """
+    # Two steps, and both are load-bearing. LIMIT cannot go on the joined query
+    # — it would cut through one asset's drafts and render a card with two
+    # captions instead of three — but paginating in Python after fetching every
+    # asset and every draft for the brand is not pagination at all. So the page
+    # of asset ids is chosen first, in SQL, and only those are joined.
+    page = (
+        select(Asset.id)
+        .where(Asset.brand_id == brand_id)
+        .order_by(Asset.id.desc())
+        .limit(limit)
+        .offset(offset)
+        .subquery()
+    )
     rows = (
         await session.execute(
             select(Asset, ContentDraft)
+            .join(page, page.c.id == Asset.id)
             .outerjoin(ContentDraft, ContentDraft.asset_id == Asset.id)
-            .where(Asset.brand_id == brand_id)
             .order_by(Asset.id.desc(), ContentDraft.id)
         )
     ).all()
@@ -127,9 +151,7 @@ async def list_assets(
         if draft is not None:
             card.drafts.append(ContentDraftRead.model_validate(draft))
 
-    # Paginated after grouping, because LIMIT on the joined rows would cut an
-    # asset's drafts in half and show a card with two captions instead of three.
-    return list(assets.values())[offset : offset + limit]
+    return list(assets.values())
 
 
 @router.get(

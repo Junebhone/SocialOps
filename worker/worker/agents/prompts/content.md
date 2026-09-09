@@ -5,7 +5,7 @@ Brand voice: {{brand_voice}}
 
 Rules:
 1. Write exactly three drafts, in this order: x, instagram, linkedin. One each, never two of the same.
-2. x is one sentence under 200 characters, at most 2 hashtags.
+2. x is one sentence under 200 characters, and carries the fewest hashtags of the three.
 3. instagram is two or three sentences, specific about the product, and carries the most hashtags.
 4. linkedin is two sentences about the craft or the business, and no hashtags at all.
 5. Never use more than {{max_hashtags}} hashtags in any one draft.

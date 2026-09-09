@@ -8,6 +8,7 @@ model calls rather than two wasted hours.
 import csv
 import io
 import time
+from collections.abc import Iterator
 from typing import Any
 
 import structlog
@@ -17,12 +18,22 @@ from sqlalchemy import func, select
 from sqlalchemy.dialects.postgresql import insert
 
 from app.db import SessionDep
-from app.models import Comment, FailedJob, PlatformAccount, Post
-from app.services.queue import enqueue_comments, queue_depth
+from app.models import Asset, Comment, FailedJob, PlatformAccount, Post
+from app.services.queue import enqueue_asset, enqueue_comments, queue_depth
 
 router = APIRouter(tags=["ingest"])
 
 log = structlog.get_logger()
+
+# Rows per INSERT. Postgres allows 65,535 bind parameters in one statement and
+# each row uses five, so this leaves a wide margin while still turning a
+# 2,000-row replay into two round trips instead of two thousand.
+CHUNK_ROWS = 1000
+
+
+def _chunks[T](items: list[T], size: int) -> Iterator[list[T]]:
+    for start in range(0, len(items), size):
+        yield items[start : start + size]
 
 
 class IncomingComment(BaseModel):
@@ -186,8 +197,10 @@ async def ingest_comments(request: Request, session: SessionDep) -> IngestResult
 
     posts = await _resolve_posts(session)
 
-    inserted_ids: list[int] = []
+    rows: list[dict[str, Any]] = []
+    seen: set[tuple[int, str]] = set()
     skipped = 0
+
     for comment in payload:
         post_id = posts.get((comment.account_handle, comment.post_external_id))
         if post_id is None:
@@ -196,25 +209,52 @@ async def ingest_comments(request: Request, session: SessionDep) -> IngestResult
             skipped += 1
             continue
 
-        # D9. ON CONFLICT on exactly the (post_id, external_id) unique constraint,
-        # so a replayed dump is a no-op instead of a duplicate charge.
-        statement = (
-            insert(Comment)
-            .values(
-                post_id=post_id,
-                external_id=comment.external_id,
-                author=comment.author,
-                text=comment.text,
-                created_at=comment.created_at,
-            )
-            .on_conflict_do_nothing(index_elements=["post_id", "external_id"])
-            .returning(Comment.id)
-        )
-        new_id = (await session.execute(statement)).scalar_one_or_none()
-        if new_id is None:
+        # Deduplicated within the batch as well as against the table. The dumps
+        # are generated with stable external_ids, but a hand-assembled payload
+        # with the same row twice would otherwise reach ON CONFLICT twice in one
+        # statement, and only the first insert is visible to the second's
+        # conflict check — so the duplicate would slip through.
+        key = (post_id, comment.external_id)
+        if key in seen:
             skipped += 1
-        else:
-            inserted_ids.append(new_id)
+            continue
+        seen.add(key)
+
+        rows.append(
+            {
+                "post_id": post_id,
+                "external_id": comment.external_id,
+                "author": comment.author,
+                "text": comment.text,
+                "created_at": comment.created_at,
+            }
+        )
+
+    inserted_ids: list[int] = []
+    if rows:
+        # One statement, not one per comment. D9 makes replaying deliberate and
+        # repeated, and `replay-full` is 2,000 rows: at a round trip each, the
+        # round trips dominate everything else this endpoint does — which the
+        # docstring on `_resolve_posts` already said, while the insert loop
+        # below it did the opposite.
+        #
+        # Chunked because a single statement carries five bind parameters per
+        # row, and Postgres caps a statement at 65,535 of them.
+        for chunk in _chunks(rows, CHUNK_ROWS):
+            statement = (
+                insert(Comment)
+                .values(chunk)
+                # D9. ON CONFLICT on exactly the (post_id, external_id) unique
+                # constraint, so a replayed dump is a no-op rather than a
+                # duplicate charge. RETURNING yields only the rows that were
+                # actually inserted, which is exactly what needs enqueueing.
+                .on_conflict_do_nothing(index_elements=["post_id", "external_id"])
+                .returning(Comment.id)
+            )
+            inserted_ids.extend((await session.execute(statement)).scalars().all())
+
+    # Anything accepted but not inserted was already present.
+    skipped += len(rows) - len(inserted_ids)
 
     await session.commit()
 
@@ -260,7 +300,7 @@ class RequeueResult(BaseModel):
 
 @router.post("/queue/requeue", response_model=RequeueResult)
 async def requeue_unprocessed(session: SessionDep) -> RequeueResult:
-    """Re-enqueue every comment still sitting at `new`.
+    """Re-enqueue every comment still at `new` and every asset still unanalysed.
 
     Ingest only enqueues comments it actually inserted (D9), which is right: it
     is what stops a replayed dump re-spending model calls. But it means a job
@@ -271,13 +311,30 @@ async def requeue_unprocessed(session: SessionDep) -> RequeueResult:
     Idempotent for the same reason ingest is: the job key is derived from the
     comment id, so a comment already queued is not queued twice.
     """
-    stuck = (
+    attempt = f"-retry-{int(time.time())}"
+
+    stuck_comments = (
         (await session.execute(select(Comment.id).where(Comment.status == "new")))
         .scalars()
         .all()
     )
-    attempt = f"-retry-{int(time.time())}"
-    return RequeueResult(requeued=await enqueue_comments(list(stuck), attempt=attempt))
+    # Assets too. The asset row is committed before the job is enqueued — it has
+    # to be, or the worker beats its own row to the database — so a Redis blip
+    # between those two lines leaves a row with no job and no `failed_jobs`
+    # entry, because no job ever existed. The card then reads "Analysing the
+    # photo…" forever. `analysis_json IS NULL` is the same marker the graph uses
+    # for "not yet processed".
+    stuck_assets = (
+        (await session.execute(select(Asset.id).where(Asset.analysis_json.is_(None))))
+        .scalars()
+        .all()
+    )
+
+    requeued = await enqueue_comments(list(stuck_comments), attempt=attempt)
+    for asset_id in stuck_assets:
+        requeued += await enqueue_asset(asset_id, attempt=attempt)
+
+    return RequeueResult(requeued=requeued)
 
 
 class QueueStats(BaseModel):

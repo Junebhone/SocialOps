@@ -89,6 +89,20 @@ async def queue_depth() -> tuple[int, int]:
     """
     async with redis_pool() as redis:
         queued = int(await redis.zcard(QUEUE_KEY) or 0)
-        # arq writes one `in-progress` key per job it has picked up.
-        running = len(await redis.keys(IN_PROGRESS_PREFIX))
+        running = await _count_in_progress(redis)
     return queued, running
+
+
+async def _count_in_progress(redis: ArqRedis) -> int:
+    """Count arq's in-progress keys with SCAN, not KEYS.
+
+    `KEYS` walks the entire keyspace and blocks Redis while it does. The top bar
+    polls this every 2 seconds from every open tab, and it does so *during* the
+    replay whose latency step 9 measures — so the cheap-looking call is O(all
+    keys) exactly when the keyspace is largest and the measurement matters.
+    SCAN is incremental and yields between batches.
+    """
+    running = 0
+    async for _key in redis.scan_iter(match=IN_PROGRESS_PREFIX, count=500):
+        running += 1
+    return running

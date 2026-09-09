@@ -47,7 +47,9 @@ async def process_comment(ctx: dict[str, Any], comment_id: int) -> str:
 
     try:
         async with session_scope(factory) as session:
-            state = await run_comment(comment_id, session)
+            # The factory goes in so an agent failure can be recorded on a
+            # session that outlives this one's rollback (hard rule #5).
+            state = await run_comment(comment_id, session, audit_factory=factory)
         return f"comment {comment_id} processed by {', '.join(state.agents_run)}"
     except Exception as exc:
         await _handle_failure(ctx, "process_comment", {"comment_id": comment_id}, exc)
@@ -67,7 +69,7 @@ async def process_asset(ctx: dict[str, Any], asset_id: int) -> str:
 
     try:
         async with session_scope(factory) as session:
-            state = await run_asset(asset_id, session)
+            state = await run_asset(asset_id, session, audit_factory=factory)
         return f"asset {asset_id} processed by {', '.join(state.agents_run)}"
     except Exception as exc:
         await _handle_failure(ctx, "process_asset", {"asset_id": asset_id}, exc)
@@ -92,8 +94,15 @@ async def _handle_failure(
 async def _record_failure(
     factory: Any, job_type: str, payload: dict[str, Any], exc: Exception, attempts: int
 ) -> None:
-    """The DLQ (hard rule #7). Payload must be enough to re-enqueue: step 9 adds
-    a Retry button that reads exactly this row."""
+    """The DLQ (hard rule #7). Payload must be enough to re-enqueue: the Failed
+    Jobs panel has a Retry button that reads exactly this row.
+
+    Also marks the comment `failed`. Without it a dead-lettered comment stays at
+    `new` and reads in the Inbox as one the pipeline simply has not reached yet
+    — indistinguishable from a queue that is merely behind, which is the wrong
+    thing to believe while debugging a stalled replay. `CommentStatus` has
+    carried the value since step 1; nothing set it until now.
+    """
     async with session_scope(factory) as session:
         session.add(
             FailedJob(
@@ -103,6 +112,12 @@ async def _record_failure(
                 attempts=attempts,
             )
         )
+        comment_id = payload.get("comment_id")
+        if comment_id is not None:
+            comment = await session.get(Comment, comment_id)
+            if comment is not None:
+                comment.status = "failed"
+
     log.error("job.dead_lettered", job_type=job_type, attempts=attempts, **payload)
 
 

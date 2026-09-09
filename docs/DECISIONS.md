@@ -409,7 +409,15 @@ bookmarked or shared link resolves to the same view. Making it *required* rather
 avoids the failure mode where an unscoped query quietly returns another brand's comments, which
 would be the demo's worst moment.
 
-**Touches:** `CLAUDE.md` API notes · steps 5, 7 and 8 in `PROMPTS.md`.
+**Amended in step 9 — two operational endpoints are outside this.** `/queue/stats` and
+`/failed_jobs` are not brand-scoped, and cannot usefully be. `failed_jobs` has no `brand_id`
+column, and giving it one would mean resolving a payload back to a brand for a row that exists
+precisely *because* its payload could not be resolved. Both describe the machine rather than a
+client's content, so neither can leak one brand's comments into another's view, which is the
+failure this entry exists to prevent. The Failed Jobs panel is labelled "all brands" so the scope
+is never in question. `/brands` was always outside it, for the obvious reason.
+
+**Touches:** `CLAUDE.md` API notes · steps 5, 7 and 8 in `PROMPTS.md` · `README.md`.
 
 ---
 

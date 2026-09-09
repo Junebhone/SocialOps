@@ -133,8 +133,18 @@ class FakeQueue:
     async def zcard(self, key: str) -> int:
         return len(self.jobs)
 
-    async def keys(self, pattern: str) -> list[str]:
-        return []
+    async def ping(self) -> bool:
+        """Reachable. /health/ready pings Redis, and a test must not open a real
+        connection to the shared instance to find that out."""
+        return True
+
+    async def scan_iter(
+        self, match: str | None = None, count: int | None = None
+    ) -> AsyncIterator[str]:
+        """No in-progress keys: nothing is actually executing in a test."""
+        empty: tuple[str, ...] = ()
+        for key in empty:
+            yield key
 
 
 @pytest.fixture(autouse=True)
