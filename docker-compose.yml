@@ -79,6 +79,8 @@ services:
       - ./api/app:/opt/api/app:ro
       - ./data:/app/data
       - ./storage:/app/storage
+      # `make eval` appends its result row here (D5).
+      - ./docs:/app/docs
     extra_hosts:
       - "host.docker.internal:host-gateway"
     depends_on:
