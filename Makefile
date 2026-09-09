@@ -1,4 +1,4 @@
-.PHONY: up down logs migrate seed test lint replay replay-full eval measure measure-full diagrams demo models reset
+.PHONY: up down logs migrate seed test lint replay replay-full eval measure measure-full diagrams demo models reset prune
 
 up:
 	docker compose up --build -d
@@ -63,3 +63,18 @@ models:
 reset: down
 	docker compose down -v
 	$(MAKE) up migrate seed
+	@# `up` builds, which orphans the previous images. Measured: one reset left
+	@# ~2 GB of dangling layers behind, and three resets fill Docker's default
+	@# 8 GB disk — at which point Postgres PANICs and will not restart (D19).
+	docker image prune -f
+
+# Reclaim Docker disk. Dangling images and build cache only: both are rebuild
+# artefacts, so nothing here loses data.
+#
+# Deliberately NOT `docker volume prune`. That removes every volume no container
+# references, which on a shared machine includes other projects' databases — it
+# would have taken an unrelated project's MySQL volume on this one.
+prune:
+	docker image prune -f
+	docker builder prune -af
+	@docker run --rm alpine:3 df -h / | awk 'NR==2 {printf "  %s free of %s in the Docker VM\n", $$4, $$2}'

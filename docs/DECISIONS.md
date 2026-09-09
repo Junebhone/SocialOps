@@ -466,8 +466,15 @@ Compose healthcheck stayed green because `/health` deliberately does not touch t
 `docker compose ps` showed four healthy services and every endpoint returning 500.
 
 Raise the virtual disk limit to 32 GB and check `docker system df` before a long run.
-`docker builder prune -af` reclaims the most (2.7 GB here); prune volumes **by name**, never with a
-blanket `docker volume prune`, which will happily delete an unrelated project's database.
+`make prune` reclaims what is safe to reclaim — dangling images and build cache, both rebuild
+artefacts. It deliberately does **not** run `docker volume prune`: that removes every volume no
+container references, which on this machine included an unrelated project's MySQL database.
+
+**The churn is self-inflicted, and now handled.** `make up` builds, so every `make reset` orphans
+the previous three images — measured at ~2 GB per reset, which means three resets fill the default
+disk on their own. This surfaced a second time during step 9's measured replay: free space fell
+from 2.7 GB to 328 MB in ten minutes, and it was image churn from one `make reset`, not the replay.
+`reset` now prunes dangling images after building.
 
 This is also a live risk for step 9: `replay-full` is 2,000 comments and roughly 10× the WAL of the
 300-comment run that filled the disk.
@@ -699,6 +706,80 @@ static `Field` constraint, and threading a runtime limit into the output model t
 framework retry on it would turn one brand's stricter rule into a retry storm on a 9B model.
 
 **Touches:** step 6 in `PROMPTS.md` · the `agent-prompts` skill (the content contract).
+
+---
+
+## D27 — Ingest rejects rows, not batches; a malformed row skips the retries · `SETTLED`
+
+**Decision:** `POST /ingest/comments` validates each row independently. Rows that fail are written
+to `failed_jobs` with `job_type="ingest_comment"` and the original payload; the rest are inserted
+and enqueued. The response gains a `rejected` count. A rejected row does **not** go through arq's
+three attempts.
+
+**Why — this was a bug, not a refinement.** Validation ran inside one `try`, so a single
+unparseable row returned `422` for the whole payload. `data/viral_post_dump.json` contains exactly
+one such row by design (`created_at: "not-a-timestamp"`, index 1447), and the generator that placed
+it says in a comment that *"the other 1,999 must still process, which is the point"*. They did not.
+Posting the real file returned HTTP 422 and inserted **zero** comments, enqueued zero jobs, and
+dead-lettered nothing — so step 9's unattended 1.5–2 hour `replay-full` would have finished in the
+first second against an empty database, and the DLQ evidence it exists to produce would never have
+appeared. Confirmed against the file before the fix.
+
+**Why straight to the DLQ instead of three retries:** hard rule #7 sends *failed jobs* to
+`failed_jobs` after three attempts, and that is right for a transient failure — a model timeout, a
+dropped connection. A date that is not a date is permanent. Retrying it twice more costs two
+round trips to produce the identical error, and it is the kind of thing that makes a DLQ entry read
+`attempts: 3` when nothing was ever retried. The rule's real requirement is *never swallow errors*,
+and recording it satisfies that.
+
+**Why `job_type="ingest_comment"` and not `"process_comment"`:** it never became a job. Labelling it
+as one would make the Retry button re-enqueue a comment id that does not exist, which fails and
+lands straight back in the DLQ — a button that looks like it works and quietly cannot.
+
+**Consequence — Retry dispatches on job type.** `process_comment` and `process_asset` are
+re-enqueued with a fresh attempt suffix (arq holds a finished job's key for an hour, so without one
+the retry inside that hour is silently refused and the button appears dead). `ingest_comment`
+re-validates the stored row instead, which normally fails again and says why. That is deliberate:
+Retry re-runs the same operation and reports the same reason rather than pretending, and it
+succeeds only if someone actually fixed the payload.
+
+**Rejected — keeping the 422 and documenting "clean your dumps first".** The dump is ours, the bad
+row is ours, and it is there specifically to exercise this path.
+
+**Touches:** step 9 in `PROMPTS.md` · `CLAUDE.md` hard rule #7 (the "3x then DLQ" line describes
+*job* failures, not parse failures) · `README.md`.
+
+---
+
+## D28 — Liveness and readiness are different questions · `SETTLED`
+
+**Decision:** `/health` stays a pure liveness probe and touches nothing external. A new
+`/health/ready` pings Postgres and Redis and returns `503` naming whichever is down. The Compose
+healthcheck for `api` points at **readiness**. `worker` and `web` get healthchecks too — the worker
+via `arq --check`, which reads arq's own Redis heartbeat.
+
+**Why:** measured, during step 6. Docker's virtual disk filled, Postgres hit
+`PANIC: could not write to file` and failed to restart — and `docker compose ps` went on reporting
+the API as **healthy**, because the healthcheck asked `/health`, which by design answers "is this
+process up" and nothing else. Four green services and every endpoint returning 500. The time lost
+went into reading a CORS error in the browser console, because a 500 raised above the CORS
+middleware arrives at the browser with no `Access-Control-Allow-Origin` header and therefore looks
+like a front-end configuration problem. Nothing in the stack said "the database is gone".
+
+**Why not simply point `/health` at the database.** A liveness probe that fails when a dependency
+is down is asking to be restarted for someone else's outage, which turns a database blip into a
+restart loop and, under an orchestrator, takes the whole service down at exactly the wrong moment.
+The two probes answer different questions and Kubernetes in Phase 3 will want both by name.
+
+**Why `arq --check` and not `pgrep arq`:** a process check stays green through a worker wedged on a
+model call that never returns, which is the failure actually worth catching on this service. arq
+writes a health record to Redis on an interval and `--check` exits non-zero when it is stale.
+
+**Consequence:** `scripts/demo.sh` waits on `/health/ready`, so it cannot proceed into a replay
+against a database that is not there.
+
+**Touches:** `docker-compose.yml` · `api/app/main.py` · D19 (this is the fix its Touches line
+called for) · step 10 in `PROMPTS.md`.
 
 ---
 

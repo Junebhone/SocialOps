@@ -131,6 +131,13 @@ Live social platform APIs (X, Meta, TikTok) require paid access or lengthy app r
 | `docs/PROMPTS.md` | The ordered build steps |
 | `docs/SETUP.md` | Claude Code tooling: skills, MCP servers, hooks, subagents |
 | `docs/eval.md` | Model accuracy log — updated on every prompt or model change |
+| `docs/architecture-phase1.md` | What runs, what talks to what, and both pipelines. Diagrams generated from the graph definitions. |
+| `api/` | FastAPI service — stateless, owns the schema and the migrations |
+| `worker/` | arq worker — the `pydantic-graph` pipelines and the four agents |
+| `web/` | Next.js app — Inbox, Content, Agents |
+| `data/` | Synthetic seed data, the two comment dumps, and the 50-comment eval set |
+| `scripts/` | `demo.sh`, `measure.py` (replay timings), `gen_diagrams.py` |
+| `infra/` | Empty in Phase 1 — Terraform lands with the AWS phases |
 | `LICENSE` | MIT License |
 
 ## Run it
@@ -140,10 +147,12 @@ and set `OLLAMA_MAX_LOADED_MODELS=2` and `OLLAMA_KEEP_ALIVE=30m` on the host she
 resident; without the cap Ollama tries to hold three and evicts mid-replay. See
 [D19](docs/DECISIONS.md).
 
-**Give Docker Desktop at least 32 GB of virtual disk** (Settings → Resources → Virtual disk limit),
-and check it with `docker system df` before a long run. The default 8 GB is not enough: images and
-build cache alone take ~4 GB, and Postgres will `PANIC: could not write to file` and refuse to
-restart when the volume fills. `docker builder prune -af` reclaims the most, quickest.
+**Give Docker Desktop at least 32 GB of virtual disk** (Settings → Resources → Virtual disk limit).
+The default 8 GB is not enough: images and build cache alone take ~4 GB, and every `make reset`
+orphans ~2 GB more, because `make up` rebuilds. When the volume fills, Postgres hits
+`PANIC: could not write to file` and refuses to restart — and the API's own healthcheck will still
+say it is fine unless you are on a build with `/health/ready`. Run `make prune` to reclaim, and
+check before any long run.
 
 ```bash
 cp .env.example .env
