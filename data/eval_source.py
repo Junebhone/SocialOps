@@ -14,6 +14,12 @@ Label definitions, applied consistently:
               are true; spam is always false; praise is false unless it also
               asks something.
 
+Category is decided by what the comment DOES, not by how much text it contains.
+An emoji-only reaction expressing clear approval is praise — "🔥🔥🔥" on a product
+post is the same act as "love this", and filing it under `other` would hide real
+positive sentiment from the Inbox. `other` is for comments that do not act on the
+brand at all: engagement bait, tagging a friend, a reaction with no valence.
+
 Deliberate composition: ~16 questions, ~10 complaints, ~9 praise, ~5 spam,
 ~10 other, with sarcasm, mixed sentiment, non-English, and emoji-only among
 them. The hard cases are marked `hard` so `make eval` can report accuracy on
@@ -123,10 +129,10 @@ EVAL: list[dict[str, Any]] = [
      "hard": "opens as praise, is a solicitation; needs_reply must still be false"},
 
     # --- other -----------------------------------------------------------
-    {"text": "🔥🔥🔥", "category": "other", "sentiment": 2, "needs_reply": False,
-     "hard": "emoji-only, but unambiguously positive"},
-    {"text": "😍", "category": "other", "sentiment": 2, "needs_reply": False,
-     "hard": "single emoji"},
+    {"text": "🔥🔥🔥", "category": "praise", "sentiment": 2, "needs_reply": False,
+     "hard": "emoji-only, but unambiguously approving — praise, not other"},
+    {"text": "😍", "category": "praise", "sentiment": 2, "needs_reply": False,
+     "hard": "single emoji expressing approval"},
     {"text": "👀", "category": "other", "sentiment": 0, "needs_reply": False,
      "hard": "emoji-only with no clear valence — this one is genuinely a 0"},
     {"text": "commenting so I can find this later", "category": "other", "sentiment": 0,

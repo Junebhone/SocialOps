@@ -151,11 +151,20 @@ def _model_settings(settings: Settings, tier: Tier) -> ModelSettings | None:
     Gated on the provider so the Phase 4 Bedrock path is unaffected — there,
     thinking is a per-model choice worth revisiting with the eval set.
     """
-    if settings.llm_provider == "ollama":
-        # OpenAIChatModelSettings, not the base ModelSettings: the field is
-        # OpenAI-dialect and OllamaModel speaks that dialect.
-        return OpenAIChatModelSettings(openai_reasoning_effort="none")
-    return None
+    if settings.llm_provider != "ollama":
+        return None
+
+    # OpenAIChatModelSettings, not the base ModelSettings: the field is
+    # OpenAI-dialect and OllamaModel speaks that dialect.
+    if tier == "fast":
+        # temperature=0 on the classification tier. Not tuning — reproducibility.
+        # At the default temperature the same 50-comment eval scored 82% and then
+        # 96% on an unchanged prompt, which makes the eval unable to answer the
+        # question D5 built it for: did a prompt edit help, or did the sampler.
+        # Classification wants the argmax anyway; there is nothing to be creative
+        # about in choosing a label.
+        return OpenAIChatModelSettings(openai_reasoning_effort="none", temperature=0.0)
+    return OpenAIChatModelSettings(openai_reasoning_effort="none")
 
 
 def render_prompt(prompt_name: str, variables: dict[str, Any]) -> str:

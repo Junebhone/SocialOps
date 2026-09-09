@@ -322,18 +322,18 @@
   {
     "external_id": "eval-040",
     "text": "🔥🔥🔥",
-    "category": "other",
+    "category": "praise",
     "sentiment": 2,
     "needs_reply": false,
-    "hard": "emoji-only, but unambiguously positive"
+    "hard": "emoji-only, but unambiguously approving — praise, not other"
   },
   {
     "external_id": "eval-041",
     "text": "😍",
-    "category": "other",
+    "category": "praise",
     "sentiment": 2,
     "needs_reply": false,
-    "hard": "single emoji"
+    "hard": "single emoji expressing approval"
   },
   {
     "external_id": "eval-042",
