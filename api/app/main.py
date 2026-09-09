@@ -22,6 +22,7 @@ from app.config import get_settings
 from app.db import create_engine_and_sessionmaker
 from app.logging import configure_logging, request_id_middleware
 from app.routers import (
+    agent_runs,
     assets,
     brands,
     comments,
@@ -77,6 +78,7 @@ app.include_router(comments.router)
 app.include_router(reply_drafts.router)
 app.include_router(assets.router)
 app.include_router(content_drafts.router)
+app.include_router(agent_runs.router)
 
 
 class Health(BaseModel):

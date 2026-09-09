@@ -39,3 +39,42 @@ class FailedJobRead(ORMModel):
     error: str
     attempts: int
     created_at: AwareDatetime
+
+
+class AgentTotals(ORMModel):
+    """One row of the per-agent summary.
+
+    Computed over every run matching the filters, NOT over the page. A totals
+    row that silently summed page one would answer "what has this cost" with a
+    number that changes when you paginate, which is worse than not showing it.
+    """
+
+    agent: AgentName
+    runs: int
+    errors: int
+    input_tokens: int
+    output_tokens: int
+    # D15's three states, aggregated. This is the sum of the runs that HAD a
+    # price; `unpriced` counts the ones that did not. SUM() skips NULLs
+    # silently, so without that companion count a Phase 4 dashboard would
+    # confidently under-report spend and look like a bargain.
+    cost_usd: Decimal | None = None
+    unpriced: int
+    # Step 9 records per-agent p50/p95 in the README. Measuring it here rather
+    # than in a one-off script means the number on the page and the number in
+    # the README come from the same query.
+    p50_latency_ms: int
+    p95_latency_ms: int
+
+
+class AgentRunPage(ORMModel):
+    """Rows plus the summary, in one response.
+
+    Together because they must agree: two endpoints would let the table and the
+    totals be filtered differently, and the first person to notice would be
+    someone asking why the numbers do not add up.
+    """
+
+    runs: list[AgentRunRead]
+    totals: list[AgentTotals]
+    total_runs: int

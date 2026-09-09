@@ -6,11 +6,12 @@ says more than a fixture name would.
 """
 
 from datetime import UTC, datetime
+from decimal import Decimal
 from typing import Any
 
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.models import Asset, Brand, Comment, ContentDraft, PlatformAccount, Post
+from app.models import AgentRun, Asset, Brand, Comment, ContentDraft, PlatformAccount, Post
 
 NOW = datetime(2026, 9, 9, 12, 0, tzinfo=UTC)
 
@@ -117,3 +118,37 @@ async def content_drafts(session: AsyncSession, asset: Asset) -> list[ContentDra
     for draft in drafts:
         await session.refresh(draft)
     return drafts
+
+
+async def agent_run(
+    session: AsyncSession,
+    brand: Brand,
+    agent: str = "triage",
+    *,
+    entity_type: str = "comment",
+    entity_id: int = 1,
+    latency_ms: int = 100,
+    cost_usd: Decimal | None = Decimal(0),
+    status: str = "ok",
+    input_tokens: int = 10,
+    output_tokens: int = 5,
+    error: str | None = None,
+) -> AgentRun:
+    """One audit row. `cost_usd=None` is D15's third state — unpriceable."""
+    run = AgentRun(
+        agent=agent,
+        entity_type=entity_type,
+        entity_id=entity_id,
+        brand_id=brand.id,
+        output_json={} if status == "ok" else None,
+        status=status,
+        input_tokens=input_tokens,
+        output_tokens=output_tokens,
+        cost_usd=cost_usd,
+        latency_ms=latency_ms,
+        error=error,
+    )
+    session.add(run)
+    await session.commit()
+    await session.refresh(run)
+    return run

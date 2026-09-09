@@ -86,6 +86,51 @@ export interface Asset {
   drafts: ContentDraft[];
 }
 
+export type AgentName = "triage" | "response" | "content" | "media";
+export type AgentRunStatus = "ok" | "error";
+
+export interface AgentRun {
+  id: number;
+  agent: AgentName;
+  entity_type: string;
+  entity_id: number;
+  brand_id: number;
+  status: AgentRunStatus;
+  input_tokens: number;
+  output_tokens: number;
+  /** D15's three states. A JSON string when priced, null when it cannot be. */
+  cost_usd: string | null;
+  latency_ms: number;
+  error: string | null;
+  created_at: string;
+}
+
+export interface AgentTotals {
+  agent: AgentName;
+  runs: number;
+  errors: number;
+  input_tokens: number;
+  output_tokens: number;
+  cost_usd: string | null;
+  /** Runs with no price. Without it, SUM() silently under-reports spend. */
+  unpriced: number;
+  p50_latency_ms: number;
+  p95_latency_ms: number;
+}
+
+export interface AgentRunPage {
+  runs: AgentRun[];
+  totals: AgentTotals[];
+  total_runs: number;
+}
+
+export interface AgentRunFilters {
+  agent?: AgentName;
+  status?: AgentRunStatus;
+  entity_type?: string;
+  entity_id?: number;
+}
+
 /**
  * Resolve a path the API handed us against the API's origin.
  *
@@ -181,4 +226,12 @@ export const api = {
       method: "PATCH",
       body: JSON.stringify(body),
     }),
+
+  agentRuns: (brandId: number, filters: AgentRunFilters = {}) => {
+    const params = new URLSearchParams({ brand_id: String(brandId), limit: "100" });
+    for (const [key, value] of Object.entries(filters)) {
+      if (value !== undefined) params.set(key, String(value));
+    }
+    return request<AgentRunPage>(`/agent_runs?${params}`);
+  },
 };
