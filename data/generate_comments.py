@@ -33,63 +33,85 @@ SEED = 20260909
 # must still process, which is the point.
 MALFORMED_INDEX = 1447
 
-QUESTIONS = [
-    "Does this come in decaf?",
+# Templates are split by brand. A comment only makes sense on the post it is
+# attached to: a coffee question under a skincare post produced the reply "we do
+# not carry coffee, only skincare formulations", which is the model being right
+# about data that was wrong. SHARED templates work for any brand.
+QUESTIONS_SHARED = [
     "Do you ship to Canada?",
-    "What's the roast date on the Guji?",
-    "Is the packaging recyclable or just the box?",
     "How long does a subscription pause last?",
+    "Is the packaging recyclable or just the box?",
+    "any chance of a bigger size?",
+    "Is there a student discount?",
+    "how much is shipping to the UK",
+    "Is my order still coming? Placed it on the {date}.",
+    "Hi, can someone tell me if order {order} shipped yet?",
+    "Whats the difference between this and the standard one",
+]
+
+QUESTIONS_COFFEE = [
+    "Does this come in decaf?",
+    "What's the roast date on the Guji?",
     "Can I change my grind after ordering?",
+    "Do you do wholesale for cafes?",
+    "Are the beans oily or dry roast?",
+    "Do you restock the sampler often?",
+]
+
+QUESTIONS_SKIN = [
     "Is this suitable for sensitive skin?",
     "Does the serum have fragrance in it?",
     "What percentage niacinamide is in this?",
     "Can I use this with retinol at night?",
     "When is the SPF actually launching?",
     "Do the refill pouches fit the old bottle?",
-    "Whats the difference between this and the standard one",
-    "any chance of a bigger size?",
-    "Do you do wholesale for cafes?",
-    "Is there a student discount?",
-    "how much is shipping to the UK",
-    "Are the beans oily or dry roast?",
     "Do you have an ingredient list somewhere?",
-    "Is my order still coming? Placed it on the {date}.",
-    "Hi, can someone tell me if order {order} shipped yet?",
-    "Do you restock the sampler often?",
 ]
 
-PRAISE = [
-    "This is genuinely the best coffee I've had all year.",
-    "Third bag this month. No notes.",
-    "The Guji is unreal. Thank you.",
-    "Finally a brand that just tells you what's in the bottle.",
-    "My skin has calmed down so much since switching.",
-    "Love that you published the supplier audit. Rare.",
-    "The refill pouches are such a good call.",
+PRAISE_SHARED = [
     "Best customer service I've dealt with, honestly.",
     "obsessed with this",
     "packaging is beautiful and it actually works",
     "Recommended you to my whole office.",
-    "Been using this for six months and it's the only thing that hasn't irritated me.",
-    "the decaf is better than most regular coffee",
     "You've earned a customer for life.",
+    "Love that you published the supplier audit. Rare.",
 ]
 
-COMPLAINTS = [
-    "Order {order} arrived smashed. Two bags split open.",
+PRAISE_COFFEE = [
+    "This is genuinely the best coffee I've had all year.",
+    "Third bag this month. No notes.",
+    "The Guji is unreal. Thank you.",
+    "the decaf is better than most regular coffee",
+]
+
+PRAISE_SKIN = [
+    "Finally a brand that just tells you what's in the bottle.",
+    "My skin has calmed down so much since switching.",
+    "The refill pouches are such a good call.",
+    "Been using this for six months and it's the only thing that hasn't irritated me.",
+]
+
+COMPLAINTS_SHARED = [
     "Been waiting 11 days and no shipping update at all.",
-    "This gave me a rash within two days. Really disappointed.",
     "Third time the subscription charged early. Sort it out.",
-    "The grind was completely wrong, ordered filter got espresso.",
     "Support hasn't answered my email in a week.",
     "Price went up 20% with no warning to subscribers.",
-    "Bottle arrived half empty. Not what I paid for.",
     "This is nothing like the sample. Really let down.",
     "I want a refund for order {order} please. This is unusable.",
     "Cancelled my subscription and was still charged.",
-    "The new formula is worse. Bring back the old one.",
-    "arrived stale, roast date was 6 weeks ago",
     "You've ignored three messages now.",
+]
+
+COMPLAINTS_COFFEE = [
+    "Order {order} arrived smashed. Two bags split open.",
+    "The grind was completely wrong, ordered filter got espresso.",
+    "arrived stale, roast date was 6 weeks ago",
+]
+
+COMPLAINTS_SKIN = [
+    "This gave me a rash within two days. Really disappointed.",
+    "Bottle arrived half empty. Not what I paid for.",
+    "The new formula is worse. Bring back the old one.",
 ]
 
 SPAM = [
@@ -118,14 +140,21 @@ OTHER = [
     "saving this one",
 ]
 
-# Weighted to the mix in PROMPTS.md step 2.
-MIX: list[tuple[str, list[str], float]] = [
-    ("question", QUESTIONS, 0.40),
-    ("praise", PRAISE, 0.25),
-    ("complaint", COMPLAINTS, 0.20),
-    ("spam", SPAM, 0.10),
-    ("other", OTHER, 0.05),
+# Shares follow the mix in PROMPTS.md step 2. `by_brand` is indexed by the brand
+# position in data/brands.py: 0 = coffee roaster, 1 = skincare.
+MIX: list[tuple[str, list[str], list[list[str]], float]] = [
+    ("question", QUESTIONS_SHARED, [QUESTIONS_COFFEE, QUESTIONS_SKIN], 0.40),
+    ("praise", PRAISE_SHARED, [PRAISE_COFFEE, PRAISE_SKIN], 0.25),
+    ("complaint", COMPLAINTS_SHARED, [COMPLAINTS_COFFEE, COMPLAINTS_SKIN], 0.20),
+    ("spam", SPAM, [[], []], 0.10),
+    ("other", OTHER, [[], []], 0.05),
 ]
+
+
+def templates_for(category: str, brand_index: int) -> list[str]:
+    """Everything a comment on this brand's post could plausibly say."""
+    row = next(item for item in MIX if item[0] == category)
+    return row[1] + row[2][brand_index]
 
 
 def _render(template: str, fake: Faker, rng: random.Random) -> str:
@@ -146,7 +175,7 @@ def _category_plan(count: int, rng: random.Random) -> list[str]:
     than of the seed.
     """
     plan: list[str] = []
-    for category, _templates, share in MIX:
+    for category, _shared, _by_brand, share in MIX:
         plan.extend([category] * round(count * share))
     # Rounding can leave the plan a row short or long.
     while len(plan) < count:
@@ -161,12 +190,13 @@ def _comment(
     prefix: str,
     post_external_id: str,
     account_handle: str,
+    brand_index: int,
     category: str,
     fake: Faker,
     rng: random.Random,
     base_time: datetime,
 ) -> dict[str, Any]:
-    templates = next(row[1] for row in MIX if row[0] == category)
+    templates = templates_for(category, brand_index)
 
     return {
         # Stable and unique: this is what makes replay idempotent (D9).
@@ -181,7 +211,9 @@ def _comment(
     }
 
 
-def generate(count: int, prefix: str, targets: list[tuple[str, str]]) -> list[dict[str, Any]]:
+def generate(
+    count: int, prefix: str, targets: list[tuple[str, str, int]]
+) -> list[dict[str, Any]]:
     fake = Faker()
     Faker.seed(SEED)
     rng = random.Random(SEED)
@@ -190,10 +222,18 @@ def generate(count: int, prefix: str, targets: list[tuple[str, str]]) -> list[di
     plan = _category_plan(count, rng)
     comments = []
     for index in range(count):
-        post_external_id, account_handle = targets[index % len(targets)]
+        post_external_id, account_handle, brand_index = targets[index % len(targets)]
         comments.append(
             _comment(
-                index, prefix, post_external_id, account_handle, plan[index], fake, rng, base_time
+                index,
+                prefix,
+                post_external_id,
+                account_handle,
+                brand_index,
+                plan[index],
+                fake,
+                rng,
+                base_time,
             )
         )
     return comments
@@ -205,7 +245,7 @@ def main() -> None:
     # The small dump spreads across both brands so the Inbox's brand selector
     # has something to switch between during the demo.
     spread = [
-        (f"post-{brand_index}-{post_index}", brand["accounts"][0]["handle"])
+        (f"post-{brand_index}-{post_index}", brand["accounts"][0]["handle"], brand_index)
         for brand_index, brand in enumerate(BRANDS)
         for post_index in range(len(brand["posts"]))
     ]
@@ -214,7 +254,7 @@ def main() -> None:
 
     # The viral dump is one post going off, which is the scenario the whole
     # queue story is about.
-    viral_target = [("post-0-9", BRANDS[0]["accounts"][0]["handle"])]
+    viral_target = [("post-0-9", BRANDS[0]["accounts"][0]["handle"], 0)]
     viral = generate(2000, "vp", viral_target)
 
     # Exactly one row the parser must reject (step 9's DLQ evidence).

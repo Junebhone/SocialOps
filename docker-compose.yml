@@ -62,7 +62,10 @@ services:
 
   worker:
     build:
-      context: ./worker
+      # Repo root, so the image can copy the api package's SQLAlchemy models —
+      # the schema is defined once and shared, never duplicated (D24).
+      context: .
+      dockerfile: worker/Dockerfile
     command: arq worker.main.WorkerSettings
     env_file:
       - .env
@@ -72,6 +75,8 @@ services:
       STORAGE_ROOT: /app/storage
     volumes:
       - ./worker:/app
+      # Dev hot-reload for the shared models; the image already contains a copy.
+      - ./api/app:/opt/api/app:ro
       - ./data:/app/data
       - ./storage:/app/storage
     extra_hosts:

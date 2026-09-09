@@ -34,3 +34,22 @@ class ResponseOutput(BaseModel):
     reply_text: str
     tone: str
     confidence: float = Field(ge=0.0, le=1.0)
+
+
+class TriageInput(BaseModel):
+    """What triage needs. Just the text — no brand context (CLAUDE.md contract)."""
+
+    comment_text: str
+
+
+class ResponseInput(BaseModel):
+    """What the response agent needs to write in a brand's voice.
+
+    `avoid_words` comes from `brand_rules_json.tone.avoid_words` (D16). It is
+    rendered into the prompt as a plain comma-separated list, because the prompt
+    is the whole contract under PromptedOutput.
+    """
+
+    comment_text: str
+    brand_voice: str
+    avoid_words: str
