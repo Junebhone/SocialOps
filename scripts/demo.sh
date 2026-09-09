@@ -16,8 +16,24 @@ WEB="${WEB:-http://localhost:3000}"
 BRAND_NAME="${BRAND_NAME:-Ridgeline Roasters}"
 SAMPLE_IMAGE="${SAMPLE_IMAGE:-data/sample_images/ridgeline_beans_flatlay.png}"
 
+usage() {
+  sed -n '3,9p' "$0" | sed 's/^# \{0,1\}//'
+}
+
+# Anything unrecognised is refused rather than ignored. The first real action
+# here deletes the database volume, and `--help` silently falling through to
+# that is not a mistake worth making once.
 KEEP=0
-[[ "${1:-}" == "--keep" ]] && KEEP=1
+case "${1:-}" in
+  "")       ;;
+  --keep)   KEEP=1 ;;
+  -h|--help) usage; exit 0 ;;
+  *)
+    echo "Unknown option: $1" >&2
+    usage >&2
+    exit 2
+    ;;
+esac
 
 say() { printf '\n\033[1m%s\033[0m\n' "$*"; }
 note() { printf '  %s\n' "$*"; }
