@@ -125,6 +125,10 @@
     @apply bg-background text-foreground text-sm;
   }
   html {
-    @apply font-sans;
+    /* Explicit fallbacks: next/font can fail to fetch (offline first build,
+       blocked CDN), and without them the app falls back to the browser default,
+       which is a serif. The UI brief says Inter at a 14px base. */
+    font-family: var(--font-sans), ui-sans-serif, system-ui, -apple-system, "Segoe UI",
+      Helvetica, Arial, sans-serif;
   }
 }

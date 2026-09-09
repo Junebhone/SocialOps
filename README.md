@@ -140,6 +140,11 @@ and set `OLLAMA_MAX_LOADED_MODELS=2` and `OLLAMA_KEEP_ALIVE=30m` on the host she
 resident; without the cap Ollama tries to hold three and evicts mid-replay. See
 [D19](docs/DECISIONS.md).
 
+**Give Docker Desktop at least 32 GB of virtual disk** (Settings → Resources → Virtual disk limit),
+and check it with `docker system df` before a long run. The default 8 GB is not enough: images and
+build cache alone take ~4 GB, and Postgres will `PANIC: could not write to file` and refuse to
+restart when the volume fills. `docker builder prune -af` reclaims the most, quickest.
+
 ```bash
 cp .env.example .env
 make models      # pull qwen3.5:2b and qwen3.5:9b (~9.3 GB) — one time
@@ -154,8 +159,13 @@ Verify it:
 docker compose ps                      # five containers, postgres/redis/api healthy
 open http://localhost:8000/health      # {"status":"ok", ...}
 open http://localhost:8000/docs        # OpenAPI
-open http://localhost:3000             # Next.js app
+open http://localhost:3000/inbox       # comments, drafts, approvals
+open http://localhost:3000/content     # uploads, analysis, platform drafts
 ```
+
+`/health` answers "is the process up" and deliberately does not touch the database, so a healthy
+API can still be sitting on a stopped Postgres. If every endpoint 500s while `docker compose ps`
+looks fine, check `docker compose logs postgres` first.
 
 `GET /docs` lists every endpoint. All of them except `/brands` require a
 `brand_id` query parameter — the API is stateless, so scope lives in the URL and

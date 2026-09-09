@@ -10,7 +10,7 @@ from typing import Any
 
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.models import Brand, Comment, PlatformAccount, Post
+from app.models import Asset, Brand, Comment, ContentDraft, PlatformAccount, Post
 
 NOW = datetime(2026, 9, 9, 12, 0, tzinfo=UTC)
 
@@ -70,3 +70,50 @@ def build_comment(post: Post, external_id: str = "c-1", **overrides: Any) -> Com
     }
     fields.update(overrides)
     return Comment(**fields)
+
+
+async def an_asset(
+    session: AsyncSession,
+    brand: Brand | None = None,
+    filename: str = "bag.png",
+    analysis: dict[str, Any] | None = None,
+) -> Asset:
+    """An uploaded photo. `analysis=None` is the still-being-analysed card."""
+    brand = brand or await a_brand(session)
+    asset = Asset(
+        brand_id=brand.id,
+        filename=filename,
+        storage_key=f"brands/{brand.id}/{filename}",
+        mime="image/png",
+        analysis_json=analysis,
+    )
+    session.add(asset)
+    await session.commit()
+    await session.refresh(asset)
+    return asset
+
+
+ANALYSIS: dict[str, Any] = {
+    "description": "A kraft coffee bag on a wooden table.",
+    "detected_text": ["RIDGELINE ROASTERS"],
+    "brand_check": {"passes": True, "issues": []},
+}
+
+
+async def content_drafts(session: AsyncSession, asset: Asset) -> list[ContentDraft]:
+    """The three captions the content agent writes for one asset."""
+    drafts = [
+        ContentDraft(
+            asset_id=asset.id,
+            platform=platform,
+            text=f"A caption for {platform}.",
+            hashtags_json=["coffee"],
+            status="pending",
+        )
+        for platform in ("x", "instagram", "linkedin")
+    ]
+    session.add_all(drafts)
+    await session.commit()
+    for draft in drafts:
+        await session.refresh(draft)
+    return drafts

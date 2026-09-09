@@ -1,5 +1,12 @@
 import { Badge } from "@/components/ui/badge";
-import type { Category, CommentStatus, DraftStatus, Urgency } from "@/lib/api";
+import type {
+  BrandCheck,
+  Category,
+  CommentStatus,
+  ContentDraftStatus,
+  DraftStatus,
+  Urgency,
+} from "@/lib/api";
 import { cn } from "@/lib/utils";
 
 /**
@@ -64,6 +71,38 @@ export function DraftStatusBadge({ value }: { value: DraftStatus }) {
   return (
     <Badge variant="secondary" className={cn("font-normal", DRAFT_STATUS[value])}>
       {value}
+    </Badge>
+  );
+}
+
+/** Content drafts never publish — the outbox drains reply drafts only — so this
+ *  reuses the same ramp minus that state, rather than defining a second one. */
+export function ContentDraftStatusBadge({ value }: { value: ContentDraftStatus }) {
+  return (
+    <Badge variant="secondary" className={cn("font-normal", DRAFT_STATUS[value])}>
+      {value}
+    </Badge>
+  );
+}
+
+/**
+ * The one place a failure is loud on this page.
+ *
+ * A passing check is a non-event and stays neutral; a failing one is the reason
+ * someone opened the card. Colour lives only on the badge (UI brief) — the
+ * issues themselves render as ordinary text, because they are content.
+ */
+export function BrandCheckBadge({ value }: { value: BrandCheck }) {
+  return value.passes ? (
+    <Badge variant="secondary" className="font-normal bg-muted text-muted-foreground">
+      brand check passed
+    </Badge>
+  ) : (
+    <Badge
+      variant="secondary"
+      className="font-normal bg-rose-100 text-rose-900 dark:bg-rose-950 dark:text-rose-200"
+    >
+      {value.issues.length === 1 ? "1 brand issue" : `${value.issues.length} brand issues`}
     </Badge>
   );
 }

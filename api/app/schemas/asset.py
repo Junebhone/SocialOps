@@ -41,3 +41,15 @@ class ContentDraftRead(ORMModel):
     agent_run_id: int | None = None
     status: ContentDraftStatus
     final_text: str | None = None
+
+
+class AssetWithDrafts(AssetRead):
+    """One Content page card: the image, what the media agent saw, and the three
+    captions written from it.
+
+    Joined server-side for the same reason `CommentWithDraft` is: the card is
+    the unit a person acts on, and making the browser fetch drafts per asset
+    would be an N+1 over a list that is already scoped to one brand.
+    """
+
+    drafts: list[ContentDraftRead] = []

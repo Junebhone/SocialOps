@@ -46,6 +46,58 @@ export interface QueueStats {
   failed: number;
 }
 
+export type Platform = "x" | "instagram" | "linkedin";
+export type ContentDraftStatus = "pending" | "approved" | "rejected";
+
+/** The media agent's brand check against brand_rules_json (D16). */
+export interface BrandCheck {
+  passes: boolean;
+  issues: string[];
+}
+
+export interface AssetAnalysis {
+  description: string;
+  detected_text: string[];
+  brand_check: BrandCheck;
+}
+
+export interface ContentDraft {
+  id: number;
+  asset_id: number;
+  platform: Platform;
+  text: string;
+  /** Stored apart from `text` so max_hashtags is checkable without parsing prose. */
+  hashtags_json: string[];
+  agent_run_id: number | null;
+  status: ContentDraftStatus;
+  final_text: string | null;
+}
+
+export interface Asset {
+  id: number;
+  brand_id: number;
+  filename: string;
+  storage_key: string;
+  mime: string;
+  /** null until the media agent has run — that is the "analysing" card. */
+  analysis_json: AssetAnalysis | null;
+  /** Whatever StorageBackend.url() returned. Relative today, presigned in Phase 4. */
+  url: string;
+  drafts: ContentDraft[];
+}
+
+/**
+ * Resolve a path the API handed us against the API's origin.
+ *
+ * `asset.url` is deliberately relative under local disk — it names an API route,
+ * because a directory has no address a browser can reach. In Phase 4 it is an
+ * absolute presigned S3 URL, so this must not clobber one that is already
+ * absolute.
+ */
+export function apiUrl(path: string): string {
+  return /^https?:\/\//.test(path) ? path : `${BASE ?? ""}${path}`;
+}
+
 /** Throws with the API's own message so callers can render it inline. */
 async function request<T>(path: string, init?: RequestInit): Promise<T> {
   // Next inlines NEXT_PUBLIC_* at build time, so an unset variable becomes the
@@ -62,11 +114,19 @@ async function request<T>(path: string, init?: RequestInit): Promise<T> {
     );
   }
 
+  // A hand-set Content-Type on a FormData body strips the multipart boundary
+  // the browser generates, and the server then parses zero parts. Let the
+  // browser set it.
+  const isMultipart = init?.body instanceof FormData;
+
   let response: Response;
   try {
     response = await fetch(`${BASE}${path}`, {
       ...init,
-      headers: { "Content-Type": "application/json", ...(init?.headers ?? {}) },
+      headers: {
+        ...(isMultipart ? {} : { "Content-Type": "application/json" }),
+        ...(init?.headers ?? {}),
+      },
       cache: "no-store",
     });
   } catch (cause) {
@@ -102,5 +162,23 @@ export const api = {
     request<ReplyDraft[]>("/reply_drafts/bulk", {
       method: "PATCH",
       body: JSON.stringify({ ids, status, approved_by: approvedBy }),
+    }),
+
+  assets: (brandId: number) =>
+    request<Asset[]>(`/assets?brand_id=${brandId}`),
+
+  uploadAsset: (brandId: number, file: File) => {
+    const form = new FormData();
+    form.append("file", file);
+    return request<{ asset: Asset; enqueued: boolean }>(`/assets?brand_id=${brandId}`, {
+      method: "POST",
+      body: form,
+    });
+  },
+
+  updateContentDraft: (id: number, body: { status?: ContentDraftStatus; final_text?: string }) =>
+    request<ContentDraft>(`/content_drafts/${id}`, {
+      method: "PATCH",
+      body: JSON.stringify(body),
     }),
 };

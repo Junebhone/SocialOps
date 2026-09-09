@@ -25,6 +25,7 @@ from app.routers import (
     assets,
     brands,
     comments,
+    content_drafts,
     ingest,
     platform_accounts,
     posts,
@@ -75,6 +76,7 @@ app.include_router(ingest.router)
 app.include_router(comments.router)
 app.include_router(reply_drafts.router)
 app.include_router(assets.router)
+app.include_router(content_drafts.router)
 
 
 class Health(BaseModel):

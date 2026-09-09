@@ -42,11 +42,19 @@ export default function RootLayout({
     // mismatch (a locale date, a Math.random key) is a bug we need to see. The
     // div-level warnings from the same extension have no code fix; check the
     // console in a clean profile before treating one as ours.
-    <html lang="en" suppressHydrationWarning>
-      <body
-        className={`${inter.variable} ${geistMono.variable} antialiased`}
-        suppressHydrationWarning
-      >
+    //
+    // The font variables belong on <html>, not <body>. next/font's `.variable`
+    // class only DECLARES --font-sans on the element that carries it, and
+    // globals.css consumes it one level above, on `html`. An unresolvable var()
+    // makes the declaration invalid at computed-value time, so the whole app
+    // silently fell back to the browser default — a serif. Inter was being
+    // loaded on every page and used on none of them.
+    <html
+      lang="en"
+      className={`${inter.variable} ${geistMono.variable}`}
+      suppressHydrationWarning
+    >
+      <body className="antialiased" suppressHydrationWarning>
         {children}
       </body>
     </html>

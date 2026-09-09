@@ -456,7 +456,24 @@ the whole run. The long keep-alive stops them being dropped during idle gaps bet
 D20 removes most of this risk at the source by collapsing `vision` onto `standard`. The cap remains
 because it costs nothing and the failure it prevents is silent.
 
-**Touches:** `.env.example` · `docs/START-HERE.md` §0 prerequisites · `README.md` "Run it".
+**Disk, not just memory.** Docker Desktop's virtual disk defaults to 8 GB on this machine, and
+that is not enough. Measured during step 6: images plus build cache reached ~4.3 GB, the Postgres
+volume and an orphaned `node_modules` volume took another 1.6 GB, and the remainder went to WAL
+during a replay. Postgres then hit `PANIC: could not write to file
+"pg_logical/replorigin_checkpoint.tmp": No space left on device`, aborted the checkpointer, and
+**failed to restart** — recovery itself needs to write. Nothing else reported a problem: the API's
+Compose healthcheck stayed green because `/health` deliberately does not touch the database, so
+`docker compose ps` showed four healthy services and every endpoint returning 500.
+
+Raise the virtual disk limit to 32 GB and check `docker system df` before a long run.
+`docker builder prune -af` reclaims the most (2.7 GB here); prune volumes **by name**, never with a
+blanket `docker volume prune`, which will happily delete an unrelated project's database.
+
+This is also a live risk for step 9: `replay-full` is 2,000 comments and roughly 10× the WAL of the
+300-comment run that filled the disk.
+
+**Touches:** `.env.example` · `docs/START-HERE.md` §0 prerequisites · `README.md` "Run it" ·
+step 10's healthchecks (a green API on a dead database is the thing to fix there).
 
 ---
 

@@ -13,11 +13,11 @@ from pydantic import BaseModel
 from sqlalchemy import select
 
 from app.db import SessionDep
-from app.models import Asset, Brand
-from app.routers.params import BrandIdQuery, StorageDep
-from app.schemas.asset import AssetRead
+from app.models import Asset, Brand, ContentDraft
+from app.routers.params import BrandIdQuery, LimitQuery, OffsetQuery, StorageDep
+from app.schemas.asset import AssetRead, AssetWithDrafts, ContentDraftRead
 from app.services.queue import enqueue_asset
-from app.storage import ASSET_FILE_ROUTE, StorageError, new_key
+from app.storage import ASSET_FILE_ROUTE, StorageBackend, StorageError, new_key
 
 router = APIRouter(tags=["assets"])
 
@@ -95,6 +95,43 @@ async def upload_asset(
     return UploadResult(asset=_read(asset, storage.url(key)), enqueued=enqueued)
 
 
+@router.get("/assets", response_model=list[AssetWithDrafts])
+async def list_assets(
+    session: SessionDep,
+    storage: StorageDep,
+    brand_id: BrandIdQuery,
+    limit: LimitQuery = 50,
+    offset: OffsetQuery = 0,
+) -> Any:
+    """Assets for one brand, newest first, each with its three captions.
+
+    One query with an outer join rather than a query per asset: an asset with no
+    drafts yet is still on the page — that is the "analysing" card — so the join
+    has to be outer, and a page of 50 assets must not become 51 round trips.
+    """
+    rows = (
+        await session.execute(
+            select(Asset, ContentDraft)
+            .outerjoin(ContentDraft, ContentDraft.asset_id == Asset.id)
+            .where(Asset.brand_id == brand_id)
+            .order_by(Asset.id.desc(), ContentDraft.id)
+        )
+    ).all()
+
+    assets: dict[int, AssetWithDrafts] = {}
+    for asset, draft in rows:
+        card = assets.get(asset.id)
+        if card is None:
+            card = _with_drafts(asset, storage)
+            assets[asset.id] = card
+        if draft is not None:
+            card.drafts.append(ContentDraftRead.model_validate(draft))
+
+    # Paginated after grouping, because LIMIT on the joined rows would cut an
+    # asset's drafts in half and show a card with two captions instead of three.
+    return list(assets.values())[offset : offset + limit]
+
+
 @router.get(
     f"{ASSET_FILE_ROUTE}/{{key:path}}",
     response_class=Response,
@@ -142,11 +179,18 @@ async def _asset_for_key(session: SessionDep, key: str) -> Asset | None:
     ).scalar_one_or_none()
 
 
-def _read(asset: Asset, url: str) -> AssetRead:
+def _columns(asset: Asset, url: str) -> dict[str, Any]:
     """ORM row + the backend's URL, which is not a column."""
-    return AssetRead.model_validate(
-        {
-            **{column.name: getattr(asset, column.name) for column in Asset.__table__.columns},
-            "url": url,
-        }
-    )
+    return {
+        **{column.name: getattr(asset, column.name) for column in Asset.__table__.columns},
+        "url": url,
+    }
+
+
+def _read(asset: Asset, url: str) -> AssetRead:
+    return AssetRead.model_validate(_columns(asset, url))
+
+
+def _with_drafts(asset: Asset, storage: StorageBackend) -> AssetWithDrafts:
+    return AssetWithDrafts.model_validate({**_columns(asset, storage.url(asset.storage_key)),
+                                           "drafts": []})
