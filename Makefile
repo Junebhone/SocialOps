@@ -1,4 +1,4 @@
-.PHONY: up down logs migrate seed test lint replay replay-full eval measure measure-full diagrams demo models reset prune
+.PHONY: up down logs migrate seed test lint replay replay-full eval measure measure-full diagrams demo models models-light reset prune
 
 up:
 	docker compose up --build -d
@@ -68,6 +68,11 @@ demo:
 models:
 	ollama pull qwen3.5:2b
 	ollama pull qwen3.5:9b
+
+# D31/ADR-0004: opt-in lighter pair for constrained RAM (~3.7 GB vs ~9.3 GB resident).
+models-light:
+	ollama pull qwen3:0.6b
+	ollama pull qwen2.5vl:3b
 
 reset: down
 	docker compose down -v

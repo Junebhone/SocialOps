@@ -143,6 +143,77 @@ class ContentOutput(BaseModel):
         return drafts
 
 
+# --- insight (fast tier) -----------------------------------------------------
+
+
+class InsightOutput(BaseModel):
+    """The insight contract. Plain-language pattern observations grounded in
+    real numbers the prompt was given — never a fabricated score, and never a
+    forecast for content that has not posted yet. See `prompts/insight.md`
+    rules 3-4, which are the actual enforcement (PromptedOutput has no schema
+    field that can rule out a hallucinated percentage)."""
+
+    markers: list[str]
+
+    @field_validator("markers")
+    @classmethod
+    def at_least_one(cls, markers: list[str]) -> list[str]:
+        if not markers:
+            raise ValueError("Expected at least one marker")
+        return markers
+
+
+class InsightInput(BaseModel):
+    """What the insight agent needs: real post text and real metrics,
+    pre-flattened to one line per post — same reasoning as `ContentInput`."""
+
+    posts_summary: str
+
+
+# --- ideation (standard tier) -----------------------------------------------
+
+
+class IdeaItem(BaseModel):
+    """One proposed content angle.
+
+    `source_signal` must echo a line from the input's `trend_signals` verbatim
+    — it is what the Ideas page shows as "inspired by", and what makes an idea
+    traceable back to `data/trends.json` without a foreign key into a table
+    that is not a database table.
+    """
+
+    text: str
+    source_signal: str
+
+
+class IdeationOutput(BaseModel):
+    """The ideation contract. A list, not a single idea: one agent_runs row
+    (hard rule #5) proposing several ideas is one call, not several."""
+
+    ideas: list[IdeaItem]
+
+    @field_validator("ideas")
+    @classmethod
+    def at_least_one(cls, ideas: list[IdeaItem]) -> list[IdeaItem]:
+        if not ideas:
+            raise ValueError("Expected at least one idea")
+        return ideas
+
+
+class IdeationInput(BaseModel):
+    """What the ideation agent needs.
+
+    Everything pre-flattened to strings, same reasoning as `ContentInput`: the
+    prompt is the whole contract under `PromptedOutput`. `past_insights` is
+    "none" until the Insight Agent exists to populate it — the contract is
+    already shaped for that, so adding it later touches no agent code.
+    """
+
+    brand_voice: str
+    trend_signals: str
+    past_insights: str
+
+
 class ContentInput(BaseModel):
     """What the content agent needs to write three captions.
 

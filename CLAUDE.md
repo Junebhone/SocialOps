@@ -170,6 +170,18 @@ LLM_MODEL_TEXT=qwen3.5:9b       # 6.6 GB — response, content
 LLM_MODEL_VISION=qwen3.5:9b     # same model, vision-capable
 ```
 
+### Lighter alternative for constrained RAM (opt-in — D31 / ADR-0004)
+Same two-model shape, smaller weights, ~3.7 GB resident instead of ~9.3 GB. Not the default —
+swap to this only if the machine can't hold the pair above. Not yet eval-verified the way the
+default pair is (see D20); run `make eval` after switching before trusting it for real drafting
+quality.
+
+```
+LLM_MODEL_FAST=qwen3:0.6b       # 523 MB — triage
+LLM_MODEL_TEXT=qwen2.5vl:3b     # 3.2 GB — response, content
+LLM_MODEL_VISION=qwen2.5vl:3b   # same model, vision-capable
+```
+
 Set on the **host**, not in the container (Ollama runs on the host):
 ```
 OLLAMA_MAX_LOADED_MODELS=2

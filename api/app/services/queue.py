@@ -11,6 +11,7 @@ The API never consumes a job. It only ever writes one and counts what is
 waiting; the worker owns execution and retries (hard rule #7).
 """
 
+import uuid
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
 
@@ -76,6 +77,35 @@ async def enqueue_asset(asset_id: int, attempt: str = "") -> bool:
     async with redis_pool() as redis:
         job = await redis.enqueue_job(
             "process_asset", asset_id, _job_id=f"asset-{asset_id}{attempt}"
+        )
+        return job is not None
+
+
+async def enqueue_ideation(brand_id: int) -> bool:
+    """One ideation job per "Generate Ideas" click.
+
+    Different keying rule from `enqueue_comments`/`enqueue_asset` on purpose:
+    those key by entity id because the entity is an immutable row that should
+    be processed exactly once (D9). A brand is not that — the whole point of
+    the button is to run ideation again and get a fresh batch, so the job key
+    carries a random suffix rather than `brand_id` alone, or the second click
+    in the same session would be silently refused as a duplicate.
+    """
+    async with redis_pool() as redis:
+        job = await redis.enqueue_job(
+            "process_ideation", brand_id, _job_id=f"ideation-{brand_id}-{uuid.uuid4().hex}"
+        )
+        return job is not None
+
+
+async def enqueue_insight(brand_id: int) -> bool:
+    """One insight job per "Generate insights" click. Same keying rule as
+    `enqueue_ideation` — a random suffix, not `brand_id` alone, because a
+    second click is a second real request, not a duplicate (D9 does not
+    apply: there is no immutable input row being re-processed)."""
+    async with redis_pool() as redis:
+        job = await redis.enqueue_job(
+            "process_insight", brand_id, _job_id=f"insight-{brand_id}-{uuid.uuid4().hex}"
         )
         return job is not None
 

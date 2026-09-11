@@ -863,6 +863,80 @@ the `ingest_comment` job type.
 
 ---
 
+## D31 — Lighter model pair added as an opt-in alternative for constrained RAM · `SETTLED (additive — does not replace D20)`
+
+**Context.** D20 settled on `qwen3.5:2b` + `qwen3.5:9b` (~9.3 GB resident) against a 16 GB dev
+machine. That remains the project default. On a machine with materially less headroom, D20's own
+math ("16 GB is sufficient for the main path") does not hold, so this entry adds a smaller pair
+**alongside** D20's, for that case only. It does not replace D20's reasoning about *why* two models
+and *why* a multimodal `standard`/`vision` collapse, and it does not change the default — anyone not
+RAM-constrained keeps using D20's pair unchanged.
+
+**Decision.** Add, as an opt-in swap (commented out in `.env.example`, documented as an alternative
+in `CLAUDE.md`, pulled via a new `make models-light` target rather than replacing `make models`):
+
+| Tier | Model | Size | Used by |
+|---|---|---|---|
+| `fast` | `qwen3:0.6b` | 523 MB | triage |
+| `standard` | `qwen2.5vl:3b` | 3.2 GB | response, content |
+| `vision` | `qwen2.5vl:3b` | *(same model)* | media |
+
+**Total resident: ~3.7 GB**, down from D20's 9.3 GB — a 60% cut, on the same two-model shape D20 and
+D19 already established (still one `fast` + one multimodal `standard`/`vision`, still
+`OLLAMA_MAX_LOADED_MODELS=2`).
+
+**Why this pair and not the others considered:**
+
+| Option | fast | standard+vision | Total | Rejected because |
+|---|---|---|---|---|
+| **B** — keep 9B-class quality | `qwen3:0.6b` | `qwen3:4b` (text, 2.5 GB) + `qwen2.5vl:3b` (vision, 3.2 GB) — **3 models** | ~6.2 GB | Reintroduces exactly the 3-model residency problem D19 wrote a whole entry to eliminate (unpredictable eviction, a stray model held alongside the two the pipeline needs). Better text quality, not worth resurrecting a solved problem. |
+| **C** — Gemma 3 | `gemma3:1b` (815 MB, text-only) | `gemma3:4b` (3.3 GB, multimodal) | ~4.1 GB | Legitimate close second — Gemma 3 has no hidden "thinking" mode, so D23's `reasoning_effort:none` workaround could be deleted entirely. Rejected only because it is a different model family: every prompt in `worker/agents/prompts/*.md` was tuned against Qwen's `PromptedOutput` behavior (D14), and switching families means re-verifying strict-JSON adherence from zero, not just re-running eval on the same harness. |
+| **D** — Gemma 4 `e2b` | `qwen3:0.6b` | `gemma4:e2b-it-qat` (4.3 GB) | ~4.8 GB | Bigger than A *and* less proven. Released April 2026 — five months old at time of writing, effectively untested against Ollama's OpenAI-compatible endpoint + `PromptedOutput`. The "E2B" name is also misleading: Gemma's matryoshka/effective-param architecture means disk size does not shrink in proportion to the "2B" label the way a normal dense model's would, so it under-delivers on the one metric this decision optimizes for. |
+
+Option A wins on the same logic D20 used against 27B models: on a RAM-constrained machine, "which
+model fits" dominates "which model scores higher" — and A additionally keeps every mechanism D14
+and D23 already proved out (same family, same `PromptedOutput` mode, same `reasoning_effort:none`
+thinking-off call), so it is the only option that costs zero new verification work in `worker/llm.py`
+itself. The cost is entirely in `worker/agents/prompts/*.md` and `docs/eval.md` — see Consequences.
+
+**This is not yet verified the way D20 was.** D20 states plainly: *"Verified on 2026-09-08. Both
+tags pulled cleanly and matched the listed sizes... smoke-tested on a generated PNG."* This entry has
+not cleared that bar — the sizes above come from the Ollama library listing, not from a local
+`ollama pull` and smoke test on this machine. Do that before trusting this table the way D20's is
+trusted:
+
+```
+ollama pull qwen3:0.6b
+ollama pull qwen2.5vl:3b
+```
+
+Then run `make eval` and compare against the two rows already in `docs/eval.md`. If category
+accuracy or sentiment MAE on the new `standard` model (3B, general-purpose vision-language) falls
+meaningfully short of `qwen3.5:9b`'s recorded 100%/0.26, the response and content agents may need
+prompt rework before this can be called settled rather than provisional.
+
+**Consequences.**
+- `docs/eval.md` needs two new rows once `make eval` is re-run against the new tags — do not hand-edit
+  numbers in that file without actually running it (see its own note: temperature-0 was pinned
+  specifically because guessed/unverified numbers there are worse than none).
+- `worker/agents/prompts/*.md` may need retuning if `qwen2.5vl:3b`'s `PromptedOutput` JSON adherence
+  is weaker than `qwen3.5:9b`'s — expect this to show up as retry-loop cost (D14's `retries=3`)
+  before it shows up as wrong output.
+- D19's residency reasoning (`OLLAMA_MAX_LOADED_MODELS=2`, `OLLAMA_KEEP_ALIVE=30m`) is unchanged and
+  still applies — this entry only swaps which two models get pinned.
+
+**Revisit when:** RAM stops being the binding constraint — e.g. building on a machine with 32 GB+
+headroom again. At that point D20's `qwen3.5:2b` + `qwen3.5:9b` (or Option B/C above) is the better
+default on quality alone; nothing about this entry argues Option A is *better* than D20, only that
+it is *what fits now*.
+
+**Touches:** `CLAUDE.md` local models section (new subsection, default untouched) · `.env.example`
+(new commented block, default untouched) · `Makefile` (new `models-light` target, `models`
+untouched) · `docs/eval.md` (pending a real `make eval` run against the new tags, once someone
+actually opts into this pair).
+
+---
+
 ## Standing assumptions
 
 | # | Assumption | Revisit when |

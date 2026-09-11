@@ -133,7 +133,7 @@ export function Content() {
       </div>
 
       {(error || rejection) && (
-        <p className="rounded-md border border-rose-200 bg-rose-50 px-3 py-2 text-sm text-rose-700 dark:border-rose-900 dark:bg-rose-950 dark:text-rose-200">
+        <p className="rounded-md border border-status-bad-bg bg-status-bad-bg px-3 py-2 text-sm text-status-bad">
           {error ?? rejection}
         </p>
       )}
@@ -272,7 +272,7 @@ function DraftColumn({
 
       {draft.final_text && !editing && <p className="text-xs text-muted-foreground">edited</p>}
 
-      {error && <p className="text-xs text-rose-600">{error}</p>}
+      {error && <p className="text-xs text-status-bad">{error}</p>}
 
       <div className="mt-auto flex flex-wrap gap-1 pt-1 opacity-0 transition-opacity focus-within:opacity-100 group-hover:opacity-100">
         {editing ? (

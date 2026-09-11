@@ -1,13 +1,22 @@
 import type { Metadata } from "next";
-import { Inter, Geist_Mono } from "next/font/google";
+import { Public_Sans, Newsreader, Geist_Mono } from "next/font/google";
 import "./globals.css";
 
-// Inter at a 14px base, per the UI brief. next/font exposes it as `--font-sans`,
-// which is the variable shadcn's theme layer reads — the scaffold pointed that
-// variable at itself, so nothing resolved and type fell back to the browser default.
-const inter = Inter({
+// Public Sans at a 14px base, per the UI brief. next/font exposes it as
+// `--font-sans`, which is the variable shadcn's theme layer reads — the
+// scaffold pointed that variable at itself, so nothing resolved and type fell
+// back to the browser default.
+const publicSans = Public_Sans({
   variable: "--font-sans",
   subsets: ["latin"],
+});
+
+// Serif display face for page titles and the sidebar wordmark — the one
+// deliberately "designed" note in an otherwise plain, functional UI.
+const newsreader = Newsreader({
+  variable: "--font-serif",
+  subsets: ["latin"],
+  style: ["normal", "italic"],
 });
 
 // Tabular figures for token counts, costs, and latencies on the Agents page.
@@ -51,7 +60,7 @@ export default function RootLayout({
     // loaded on every page and used on none of them.
     <html
       lang="en"
-      className={`${inter.variable} ${geistMono.variable}`}
+      className={`${publicSans.variable} ${newsreader.variable} ${geistMono.variable}`}
       suppressHydrationWarning
     >
       <body className="antialiased" suppressHydrationWarning>

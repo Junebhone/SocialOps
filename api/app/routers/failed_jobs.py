@@ -20,7 +20,7 @@ from app.models import FailedJob
 from app.routers.ingest import dead_letter_rows
 from app.routers.params import LimitQuery, OffsetQuery
 from app.schemas.agent_run import FailedJobRead
-from app.services.queue import enqueue_asset, enqueue_comments
+from app.services.queue import enqueue_asset, enqueue_comments, enqueue_ideation, enqueue_insight
 
 router = APIRouter(prefix="/failed_jobs", tags=["failed_jobs"])
 
@@ -30,7 +30,7 @@ router = APIRouter(prefix="/failed_jobs", tags=["failed_jobs"])
 # so re-running it produces the identical failure forever. The remedy for a
 # malformed input row is to fix the source data and re-ingest, which happens
 # nowhere near this panel.
-RETRYABLE = frozenset({"process_comment", "process_asset"})
+RETRYABLE = frozenset({"process_comment", "process_asset", "process_ideation", "process_insight"})
 
 
 class RetryResult(BaseModel):
@@ -99,6 +99,18 @@ async def retry_failed_job(job_id: int, session: SessionDep) -> Any:
             asset_id = int(job.payload_json["asset_id"])
             queued = int(await enqueue_asset(asset_id, attempt=attempt))
             detail = f"Re-queued asset {asset_id}"
+        case "process_ideation":
+            # No `attempt` suffix: unlike comments/assets, ideation's job key
+            # already carries a random suffix per enqueue (see
+            # `enqueue_ideation`), so there is no stale key for arq to refuse.
+            brand_id = int(job.payload_json["brand_id"])
+            queued = int(await enqueue_ideation(brand_id))
+            detail = f"Re-queued ideation for brand {brand_id}"
+        case "process_insight":
+            # No `attempt` suffix, same reasoning as process_ideation above.
+            brand_id = int(job.payload_json["brand_id"])
+            queued = int(await enqueue_insight(brand_id))
+            detail = f"Re-queued insight for brand {brand_id}"
         case _:
             # Including "ingest_comment". Retrying it re-runs a validation that
             # cannot pass — an earlier version did exactly that, returned the

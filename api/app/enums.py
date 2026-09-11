@@ -29,13 +29,19 @@ DraftStatus = Literal["pending", "approved", "rejected", "published"]
 # Content drafts never reach "published": the outbox drains reply drafts only.
 ContentDraftStatus = Literal["pending", "approved", "rejected"]
 
-AgentName = Literal["triage", "response", "content", "media"]
+# Ideas never reach "published" either — approving one is inspiration only, not
+# a pipeline trigger; the manager uploads a photo through the existing Content
+# page same as always.
+ContentIdeaStatus = Literal["proposed", "approved", "rejected"]
+
+AgentName = Literal["triage", "response", "content", "media", "ideation", "insight"]
 AgentRunStatus = Literal["ok", "error"]
 
 # D7: entity_type is deliberately NOT constrained at the database. This alias is
 # for Pydantic and for readers; a CHECK here would reintroduce the migration-per-
-# new-input-type that D7 exists to avoid.
-EntityType = Literal["comment", "asset"]
+# new-input-type that D7 exists to avoid. "brand": the ideation agent runs per
+# brand against seeded trend signals, not against one comment or asset row.
+EntityType = Literal["comment", "asset", "brand"]
 
 # D8: a 5-point ordinal, not a float. Small models do not produce calibrated
 # continuous scores, and five buckets are what a human can hand-label for eval.

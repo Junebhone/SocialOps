@@ -1,0 +1,31 @@
+{
+  "_comment": "Seeded trend signals (D31-style opt-in feature, see docs/decisions). One JSON file, one consumer: the Ideation Agent. Keyed by brand name so it lines up with data/brands.py. Free, static, hand-curated — not scraped, not live. Content-marketing angle categories that stay evergreen for a niche, not real-time trending topics.",
+  "Ridgeline Roasters": [
+    "Behind-the-scenes: a day in the roastery, from green bean to bag",
+    "Sustainability angle: compostable packaging, supply chain transparency",
+    "Founder/team spotlight: introduce the person behind the roast",
+    "Educational: explain a coffee process (washed, natural, honey) simply",
+    "Seasonal tie-in: a limited origin or holiday sampler",
+    "UGC repost idea: customer's home pour-over setup",
+    "Cupping notes breakdown for the technically curious",
+    "Subscription/restock reminder framed as a ritual, not a sale",
+    "Local community angle: the shop, the neighborhood, the regulars",
+    "Comparison/education: single-origin vs blend, for newer customers",
+    "Sourcing story: the farm, the region, the relationship",
+    "Brew method tutorial tied to a specific bean in stock"
+  ],
+  "Fieldnote Skin": [
+    "Ingredient deep-dive: what one active actually does, plain language",
+    "Formulation transparency: why a percentage was chosen, not a bigger number",
+    "Refill/sustainability angle: less plastic per unit",
+    "Patch-testing education: how to do it safely",
+    "Supplier/sourcing audit or transparency post",
+    "Myth-busting: a common skincare claim, addressed plainly",
+    "Routine-building: how one product fits a simple routine",
+    "Restock or sample-size availability, framed factually",
+    "Q&A roundup: real customer questions, answered directly",
+    "Reformulation story: what changed and why",
+    "Barrier-health education: plain explanation of a skin concept",
+    "Fragrance-free/sensitive-skin angle for a specific product"
+  ]
+}

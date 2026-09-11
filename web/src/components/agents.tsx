@@ -3,6 +3,7 @@
 import { useRouter, useSearchParams } from "next/navigation";
 import { useCallback, useEffect, useRef, useState } from "react";
 
+import { ActivityChart, LatencyChart } from "@/components/agent-charts";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
@@ -16,15 +17,29 @@ import {
 } from "@/lib/api";
 import { cn } from "@/lib/utils";
 
-const AGENTS: AgentName[] = ["triage", "response", "content", "media"];
+const AGENTS: AgentName[] = ["triage", "response", "content", "media", "ideation", "insight"];
+
+// worker/config.py's tier map, restated here for the reader — agents never
+// name a model (hard rule #3), but the sidebar and this page both show which
+// tier does the work.
+const TIER: Record<AgentName, string> = {
+  triage: "fast",
+  response: "standard",
+  content: "standard",
+  media: "vision",
+  ideation: "standard",
+  insight: "standard",
+};
 
 /**
- * The audit trail (hard rule #5), as a table.
+ * The audit trail (hard rule #5).
  *
- * D1 cut the analytics agent and the charts on purpose. What earns its place
- * here is that every number is traceable to one row and one model call — so the
- * page is built for reading numbers, not for looking at them: tabular figures,
- * right-aligned, one accent and no colour except on a failure.
+ * D1 cut the AnalyticsAgent, its Recharts dashboard, and a dedicated
+ * `/analytics` endpoint — a new model and a new route were the cost being
+ * avoided, not visualization itself. The charts below spend nothing extra:
+ * they read the same `agent_runs` rows the table renders, computed client-side,
+ * and every bar states its exact figure on hover — so the traceability D1 cared
+ * about (every number back to one row, one model call) still holds.
  */
 export function Agents() {
   const params = useSearchParams();
@@ -133,7 +148,7 @@ export function Agents() {
       </div>
 
       {error && (
-        <p className="rounded-md border border-rose-200 bg-rose-50 px-3 py-2 text-sm text-rose-700 dark:border-rose-900 dark:bg-rose-950 dark:text-rose-200">
+        <p className="rounded-md border border-status-bad-bg bg-status-bad-bg px-3 py-2 text-sm text-status-bad">
           {error}
         </p>
       )}
@@ -149,6 +164,10 @@ export function Agents() {
         />
       ) : (
         <>
+          <div className="grid gap-4 lg:grid-cols-2">
+            <LatencyChart totals={page.totals} />
+            <ActivityChart runs={page.runs} totalRuns={page.total_runs} />
+          </div>
           <Totals totals={page.totals} />
           <Runs
             runs={page.runs}
@@ -233,7 +252,7 @@ function FailedJobs() {
 
       {notice && <p className="mb-2 text-sm text-muted-foreground">{notice}</p>}
       {error && (
-        <p className="mb-2 rounded-md border border-rose-200 bg-rose-50 px-3 py-2 text-sm text-rose-700 dark:border-rose-900 dark:bg-rose-950 dark:text-rose-200">
+        <p className="mb-2 rounded-md border border-status-bad-bg bg-status-bad-bg px-3 py-2 text-sm text-status-bad">
           {error}
         </p>
       )}
@@ -267,7 +286,7 @@ function FailedJobs() {
                     {describePayload(job.payload_json)}
                   </p>
                 </TableCell>
-                <TableCell className="max-w-md py-2.5 text-rose-700 dark:text-rose-300">
+                <TableCell className="max-w-md py-2.5 text-status-bad">
                   {job.error}
                 </TableCell>
                 <TableCell className="py-2.5 text-right font-mono tabular-nums">
@@ -315,6 +334,7 @@ function Totals({ totals }: { totals: AgentTotals[] }) {
         <TableHeader>
           <TableRow>
             <TableHead>Agent</TableHead>
+            <TableHead>Tier</TableHead>
             <TableHead className="text-right">Runs</TableHead>
             <TableHead className="text-right">Errors</TableHead>
             <TableHead className="text-right">Tokens in</TableHead>
@@ -328,9 +348,10 @@ function Totals({ totals }: { totals: AgentTotals[] }) {
           {totals.map((row) => (
             <TableRow key={row.agent}>
               <TableCell className="py-2.5 font-medium">{row.agent}</TableCell>
+              <TableCell className="py-2.5 text-muted-foreground">{TIER[row.agent]}</TableCell>
               <Num value={row.runs} />
               <TableCell
-                className={cn("py-2.5 text-right font-mono tabular-nums", row.errors > 0 && "text-rose-600")}
+                className={cn("py-2.5 text-right font-mono tabular-nums", row.errors > 0 && "text-destructive font-semibold")}
               >
                 {row.errors}
               </TableCell>
@@ -345,11 +366,12 @@ function Totals({ totals }: { totals: AgentTotals[] }) {
           ))}
           <TableRow className="border-t-2 border-border font-medium hover:bg-transparent">
             <TableCell className="py-2.5">All</TableCell>
+            <TableCell className="py-2.5" />
             <Num value={sum((r) => r.runs)} />
             <TableCell
               className={cn(
                 "py-2.5 text-right font-mono tabular-nums",
-                sum((r) => r.errors) > 0 && "text-rose-600",
+                sum((r) => r.errors) > 0 && "text-destructive font-semibold",
               )}
             >
               {sum((r) => r.errors)}
@@ -423,7 +445,7 @@ function Runs({
                   {run.entity_type} {run.entity_id}
                 </button>
                 {run.error && (
-                  <p className="mt-0.5 max-w-md truncate text-xs text-rose-600" title={run.error}>
+                  <p className="mt-0.5 max-w-md truncate text-xs text-status-bad" title={run.error}>
                     {run.error}
                   </p>
                 )}
@@ -444,7 +466,7 @@ function Runs({
                 ) : (
                   <Badge
                     variant="secondary"
-                    className="font-normal bg-rose-100 text-rose-900 dark:bg-rose-950 dark:text-rose-200"
+                    className="font-normal bg-status-bad-bg text-status-bad"
                   >
                     error
                   </Badge>
