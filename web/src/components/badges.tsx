@@ -4,6 +4,7 @@ import type {
   Category,
   CommentStatus,
   ContentDraftStatus,
+  ContentIdeaStatus,
   DraftStatus,
   Urgency,
 } from "@/lib/api";
@@ -15,14 +16,15 @@ import { cn } from "@/lib/utils";
  * competing with the surrounding chrome.
  */
 
-/** D8's five buckets, in order. An ordinal deserves an ordinal ramp: red through
- *  grey to green, so severity is legible without reading the label. */
+/** D8's five buckets, in order. An ordinal deserves an ordinal ramp: the same
+ *  muted bad/neutral/good tokens badges use everywhere else, so severity is
+ *  legible without reading the label — never the stock Tailwind brights. */
 const SENTIMENT = [
-  { label: "hostile", className: "bg-rose-100 text-rose-900 dark:bg-rose-950 dark:text-rose-200" },
-  { label: "negative", className: "bg-amber-100 text-amber-900 dark:bg-amber-950 dark:text-amber-200" },
+  { label: "hostile", className: "bg-status-bad-bg text-status-bad" },
+  { label: "negative", className: "bg-status-warn-bg text-status-warn" },
   { label: "neutral", className: "bg-muted text-muted-foreground" },
-  { label: "positive", className: "bg-teal-100 text-teal-900 dark:bg-teal-950 dark:text-teal-200" },
-  { label: "delighted", className: "bg-emerald-200 text-emerald-950 dark:bg-emerald-900 dark:text-emerald-100" },
+  { label: "positive", className: "bg-status-good-bg text-status-good" },
+  { label: "delighted", className: "bg-status-good-bg text-status-good font-medium" },
 ];
 
 export function SentimentBadge({ value }: { value: number | null }) {
@@ -37,8 +39,8 @@ export function SentimentBadge({ value }: { value: number | null }) {
 
 const URGENCY: Record<Urgency, string> = {
   low: "bg-muted text-muted-foreground",
-  med: "bg-amber-100 text-amber-900 dark:bg-amber-950 dark:text-amber-200",
-  high: "bg-rose-600 text-white dark:bg-rose-700",
+  med: "bg-status-warn-bg text-status-warn",
+  high: "bg-status-bad text-primary-foreground",
 };
 
 export function UrgencyBadge({ value }: { value: Urgency | null }) {
@@ -62,9 +64,9 @@ export function CategoryBadge({ value }: { value: Category | null }) {
 
 const DRAFT_STATUS: Record<DraftStatus, string> = {
   pending: "bg-muted text-muted-foreground",
-  approved: "bg-primary/10 text-primary",
+  approved: "bg-accent text-accent-foreground",
   rejected: "bg-muted text-muted-foreground line-through",
-  published: "bg-emerald-100 text-emerald-900 dark:bg-emerald-950 dark:text-emerald-200",
+  published: "bg-status-good-bg text-status-good",
 };
 
 export function DraftStatusBadge({ value }: { value: DraftStatus }) {
@@ -94,15 +96,26 @@ export function ContentDraftStatusBadge({ value }: { value: ContentDraftStatus }
  */
 export function BrandCheckBadge({ value }: { value: BrandCheck }) {
   return value.passes ? (
-    <Badge variant="secondary" className="font-normal bg-muted text-muted-foreground">
+    <Badge variant="secondary" className="font-normal bg-status-good-bg text-status-good">
       brand check passed
     </Badge>
   ) : (
-    <Badge
-      variant="secondary"
-      className="font-normal bg-rose-100 text-rose-900 dark:bg-rose-950 dark:text-rose-200"
-    >
+    <Badge variant="secondary" className="font-normal bg-status-bad-bg text-status-bad">
       {value.issues.length === 1 ? "1 brand issue" : `${value.issues.length} brand issues`}
+    </Badge>
+  );
+}
+
+const CONTENT_IDEA_STATUS: Record<ContentIdeaStatus, string> = {
+  proposed: "bg-muted text-muted-foreground",
+  approved: "bg-accent text-accent-foreground",
+  rejected: "bg-muted text-muted-foreground line-through",
+};
+
+export function ContentIdeaStatusBadge({ value }: { value: ContentIdeaStatus }) {
+  return (
+    <Badge variant="secondary" className={cn("font-normal", CONTENT_IDEA_STATUS[value])}>
+      {value}
     </Badge>
   );
 }

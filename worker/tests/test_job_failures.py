@@ -8,6 +8,7 @@ last attempt" had no coverage anywhere.
 
 from __future__ import annotations
 
+import asyncio
 from pathlib import Path
 from typing import Any
 
@@ -72,6 +73,21 @@ def _explodes_on_call(which: int) -> FunctionModel:
     return FunctionModel(respond)
 
 
+def _cancels_on_call(which: int) -> FunctionModel:
+    """A model that answers normally until the `which`-th call, then the call
+    is cancelled — the same `asyncio.CancelledError` arq raises into a job's
+    coroutine when `job_timeout` fires, not a model-raised exception."""
+    calls = {"n": 0}
+
+    def respond(messages: list[ModelMessage], info: AgentInfo) -> ModelResponse:
+        calls["n"] += 1
+        if calls["n"] == which:
+            raise asyncio.CancelledError
+        return ModelResponse(parts=[TextPart(TRIAGE_REPLY)])
+
+    return FunctionModel(respond)
+
+
 # --- hard rule #5: every INVOCATION writes a row ---------------------------
 
 
@@ -96,6 +112,27 @@ async def test_a_failed_agent_call_writes_an_error_row(
     # NULL, not 0: the call may have spent tokens before it died and we do not
     # know how many. "Unknown" is a different fact from "free" (D15).
     assert run.cost_usd is None
+
+
+async def test_a_cancelled_agent_call_still_writes_an_error_row(
+    db: AsyncSession, prompts: None, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """arq's `job_timeout` cancels the job's coroutine, raising
+    `asyncio.CancelledError` — a `BaseException` since Python 3.8, not caught by
+    `except Exception`. Before this fix, a timeout left no `agent_runs` row at
+    all: the same gap `test_a_failed_agent_call_writes_an_error_row` closed for
+    ordinary exceptions was still open for cancellation."""
+    comment = await _a_comment(db)
+    monkeypatch.setattr(llm, "_build_model", lambda s, t: _cancels_on_call(1))
+
+    with pytest.raises(asyncio.CancelledError):
+        await run_comment(comment.id, db)
+    await db.commit()
+
+    run = (await db.execute(select(AgentRun))).scalar_one()
+    assert run.agent == "triage"
+    assert run.status == "error"
+    assert "CancelledError" in (run.error or "")
 
 
 async def test_the_error_row_is_joinable_back_to_the_comment(
@@ -217,6 +254,28 @@ async def test_a_dead_lettered_comment_is_marked_failed(
         await main.process_comment(_ctx(factory, main.MAX_TRIES), comment.id)
 
     async with factory() as checking:
+        reloaded = await checking.get(Comment, comment.id)
+        assert reloaded is not None and reloaded.status == "failed"
+
+
+async def test_a_cancelled_final_attempt_still_dead_letters(
+    db: AsyncSession, worker_engine: AsyncEngine, prompts: None, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Same gap as the agent-row test above, one layer up: `process_comment`'s
+    `except Exception` also misses `CancelledError`, so a timed-out final
+    attempt used to skip the DLQ write and leave the comment stuck at `new`
+    forever — no error, no retry, no trace anywhere."""
+    comment = await _a_comment(db)
+    monkeypatch.setattr(llm, "_build_model", lambda s, t: _cancels_on_call(1))
+    factory = async_sessionmaker(worker_engine, expire_on_commit=False)
+
+    with pytest.raises(asyncio.CancelledError):
+        await main.process_comment(_ctx(factory, main.MAX_TRIES), comment.id)
+
+    async with factory() as checking:
+        job = (await checking.execute(select(FailedJob))).scalar_one()
+        assert job.job_type == "process_comment"
+        assert "CancelledError" in job.error
         reloaded = await checking.get(Comment, comment.id)
         assert reloaded is not None and reloaded.status == "failed"
 

@@ -9,7 +9,7 @@
   --color-foreground: var(--foreground);
   --font-sans: var(--font-sans);
   --font-mono: var(--font-geist-mono);
-  --font-heading: var(--font-sans);
+  --font-heading: var(--font-serif);
   --color-sidebar-ring: var(--sidebar-ring);
   --color-sidebar-border: var(--sidebar-border);
   --color-sidebar-accent-foreground: var(--sidebar-accent-foreground);
@@ -39,6 +39,14 @@
   --color-popover: var(--popover);
   --color-card-foreground: var(--card-foreground);
   --color-card: var(--card);
+  --color-status-good: var(--status-good);
+  --color-status-good-bg: var(--status-good-bg);
+  --color-status-warn: var(--status-warn);
+  --color-status-warn-bg: var(--status-warn-bg);
+  --color-status-bad: var(--status-bad);
+  --color-status-bad-bg: var(--status-bad-bg);
+  --color-row-hover: var(--row-hover);
+  --color-row-border: var(--row-border);
   --radius-sm: calc(var(--radius) * 0.6);
   --radius-md: calc(var(--radius) * 0.8);
   --radius-lg: var(--radius);
@@ -49,72 +57,103 @@
 }
 
 :root {
-  --background: oklch(1 0 0);
-  --foreground: oklch(0.145 0 0);
-  --card: oklch(1 0 0);
-  --card-foreground: oklch(0.145 0 0);
-  --popover: oklch(1 0 0);
-  --popover-foreground: oklch(0.145 0 0);
-  --primary: oklch(0.47 0.11 262);
-  --primary-foreground: oklch(0.985 0 0);
-  --secondary: oklch(0.97 0 0);
-  --secondary-foreground: oklch(0.205 0 0);
-  --muted: oklch(0.97 0 0);
-  --muted-foreground: oklch(0.556 0 0);
-  --accent: oklch(0.97 0 0);
-  --accent-foreground: oklch(0.205 0 0);
-  --destructive: oklch(0.577 0.245 27.325);
-  --border: oklch(0.922 0 0);
-  --input: oklch(0.922 0 0);
-  --ring: oklch(0.708 0 0);
-  --chart-1: oklch(0.87 0 0);
-  --chart-2: oklch(0.556 0 0);
-  --chart-3: oklch(0.439 0 0);
-  --chart-4: oklch(0.371 0 0);
-  --chart-5: oklch(0.269 0 0);
-  --radius: 0.375rem;
-  --sidebar: oklch(0.985 0 0);
-  --sidebar-foreground: oklch(0.145 0 0);
-  --sidebar-primary: oklch(0.205 0 0);
-  --sidebar-primary-foreground: oklch(0.985 0 0);
-  --sidebar-accent: oklch(0.97 0 0);
-  --sidebar-accent-foreground: oklch(0.205 0 0);
-  --sidebar-border: oklch(0.922 0 0);
-  --sidebar-ring: oklch(0.708 0 0);
+  /* Editorial calm: warm paper, warm ink, one terracotta accent. Exact values
+     lifted from the reference design (SocialOpsui.html) — do not round these
+     to a cleaner-looking number, they were tuned as a set. */
+  --background: oklch(0.98 0.012 75);
+  --foreground: oklch(0.24 0.012 60);
+  --card: oklch(0.99 0.008 78);
+  --card-foreground: oklch(0.24 0.012 60);
+  --popover: oklch(0.99 0.008 78);
+  --popover-foreground: oklch(0.24 0.012 60);
+  --primary: oklch(0.55 0.13 40);
+  --primary-foreground: oklch(0.99 0.01 75);
+  --secondary: oklch(0.94 0.014 70);
+  --secondary-foreground: oklch(0.24 0.012 60);
+  --muted: oklch(0.94 0.014 70);
+  --muted-foreground: oklch(0.52 0.02 60);
+  --accent: oklch(0.9 0.035 45);
+  --accent-foreground: oklch(0.4 0.09 40);
+  --destructive: oklch(0.42 0.12 25);
+  --border: oklch(0.89 0.012 70);
+  --input: oklch(0.89 0.012 70);
+  --ring: oklch(0.65 0.1 40);
+  --chart-1: oklch(0.55 0.13 40);
+  --chart-2: oklch(0.45 0.06 145);
+  --chart-3: oklch(0.45 0.07 75);
+  --chart-4: oklch(0.52 0.02 60);
+  --chart-5: oklch(0.35 0.02 60);
+  --radius: 0.5rem;
+  --sidebar: oklch(0.98 0.012 75);
+  --sidebar-foreground: oklch(0.24 0.012 60);
+  --sidebar-primary: oklch(0.9 0.035 45);
+  --sidebar-primary-foreground: oklch(0.4 0.09 40);
+  --sidebar-accent: oklch(0.94 0.014 70);
+  --sidebar-accent-foreground: oklch(0.24 0.012 60);
+  --sidebar-border: oklch(0.89 0.012 70);
+  --sidebar-ring: oklch(0.65 0.1 40);
+
+  /* Status ramps — muted, ink-tinted, never the stock Tailwind brights.
+     Badges reference these directly (badges.tsx). Exact reference values. */
+  --status-good: oklch(0.45 0.06 145);
+  --status-good-bg: oklch(0.93 0.031 145);
+  --status-warn: oklch(0.45 0.07 75);
+  --status-warn-bg: oklch(0.93 0.04 75);
+  --status-bad: oklch(0.42 0.12 25);
+  --status-bad-bg: oklch(0.93 0.035 25);
+  /* Row-hover wash used by grid-row pages (Inbox) — one step off card. */
+  --row-hover: oklch(0.96 0.014 72);
+  /* Lighter divider between data rows, vs. the heavier structural --border. */
+  --row-border: oklch(0.92 0.012 70);
 }
 
 .dark {
-  --background: oklch(0.145 0 0);
-  --foreground: oklch(0.985 0 0);
-  --card: oklch(0.205 0 0);
-  --card-foreground: oklch(0.985 0 0);
-  --popover: oklch(0.205 0 0);
-  --popover-foreground: oklch(0.985 0 0);
-  --primary: oklch(0.68 0.12 262);
-  --primary-foreground: oklch(0.16 0.03 262);
-  --secondary: oklch(0.269 0 0);
-  --secondary-foreground: oklch(0.985 0 0);
-  --muted: oklch(0.269 0 0);
-  --muted-foreground: oklch(0.708 0 0);
-  --accent: oklch(0.269 0 0);
-  --accent-foreground: oklch(0.985 0 0);
-  --destructive: oklch(0.704 0.191 22.216);
+  --background: oklch(0.19 0.014 55);
+  --foreground: oklch(0.94 0.01 70);
+  --card: oklch(0.23 0.015 55);
+  --card-foreground: oklch(0.94 0.01 70);
+  --popover: oklch(0.23 0.015 55);
+  --popover-foreground: oklch(0.94 0.01 70);
+  --primary: oklch(0.65 0.12 40);
+  --primary-foreground: oklch(0.19 0.02 45);
+  --secondary: oklch(0.29 0.015 55);
+  --secondary-foreground: oklch(0.94 0.01 70);
+  --muted: oklch(0.29 0.015 55);
+  --muted-foreground: oklch(0.68 0.015 65);
+  --accent: oklch(0.33 0.035 45);
+  --accent-foreground: oklch(0.88 0.04 55);
+  --destructive: oklch(0.65 0.14 25);
   --border: oklch(1 0 0 / 10%);
   --input: oklch(1 0 0 / 15%);
-  --ring: oklch(0.556 0 0);
-  --chart-1: oklch(0.87 0 0);
-  --chart-2: oklch(0.556 0 0);
-  --chart-3: oklch(0.439 0 0);
-  --chart-4: oklch(0.371 0 0);
-  --chart-5: oklch(0.269 0 0);
-  --sidebar: oklch(0.205 0 0);
-  --sidebar-foreground: oklch(0.985 0 0);
-  --sidebar-primary: oklch(0.488 0.243 264.376);
-  --sidebar-primary-foreground: oklch(0.985 0 0);
-  --sidebar-accent: oklch(0.269 0 0);
-  --sidebar-accent-foreground: oklch(0.985 0 0);
+  --ring: oklch(0.6 0.1 40);
+  --chart-1: oklch(0.65 0.12 40);
+  --chart-2: oklch(0.65 0.09 145);
+  --chart-3: oklch(0.65 0.1 75);
+  --chart-4: oklch(0.7 0.015 65);
+  --chart-5: oklch(0.5 0.015 65);
+  --sidebar: oklch(0.23 0.015 55);
+  --sidebar-foreground: oklch(0.94 0.01 70);
+  --sidebar-primary: oklch(0.33 0.035 45);
+  --sidebar-primary-foreground: oklch(0.88 0.04 55);
+  --sidebar-accent: oklch(0.29 0.015 55);
+  --sidebar-accent-foreground: oklch(0.94 0.01 70);
   --sidebar-border: oklch(1 0 0 / 10%);
-  --sidebar-ring: oklch(0.556 0 0);
+  --sidebar-ring: oklch(0.6 0.1 40);
+
+  --status-good: oklch(0.72 0.11 150);
+  --status-good-bg: oklch(0.28 0.04 150);
+  --status-warn: oklch(0.75 0.1 75);
+  --status-warn-bg: oklch(0.3 0.045 75);
+  --status-bad: oklch(0.7 0.12 25);
+  --status-bad-bg: oklch(0.3 0.05 25);
+}
+
+/* Generate-ideas button loading sweep (Ideas page). Pure CSS, GPU-composited
+   transform/opacity only — negligible cost regardless of how long it runs. */
+@keyframes shimmer {
+  100% {
+    transform: translateX(100%);
+  }
 }
 
 @layer base {
@@ -127,8 +166,12 @@
   html {
     /* Explicit fallbacks: next/font can fail to fetch (offline first build,
        blocked CDN), and without them the app falls back to the browser default,
-       which is a serif. The UI brief says Inter at a 14px base. */
+       which is a serif. The UI brief says Public Sans at a 14px base. */
     font-family: var(--font-sans), ui-sans-serif, system-ui, -apple-system, "Segoe UI",
       Helvetica, Arial, sans-serif;
+  }
+  h1, h2, h3 {
+    font-family: var(--font-serif), Georgia, serif;
+    font-weight: 500;
   }
 }

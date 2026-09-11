@@ -21,7 +21,7 @@ from sqlalchemy import select
 from worker.config import get_settings
 from worker.db import create_engine_and_sessionmaker, session_scope
 from worker.logging import bind_job_context, configure_logging
-from worker.orchestrator import run_asset, run_comment
+from worker.orchestrator import run_asset, run_comment, run_ideation, run_insight
 
 configure_logging()
 
@@ -51,7 +51,11 @@ async def process_comment(ctx: dict[str, Any], comment_id: int) -> str:
             # session that outlives this one's rollback (hard rule #5).
             state = await run_comment(comment_id, session, audit_factory=factory)
         return f"comment {comment_id} processed by {', '.join(state.agents_run)}"
-    except Exception as exc:
+    except (Exception, asyncio.CancelledError) as exc:
+        # arq's `job_timeout` cancels this coroutine via `asyncio.wait_for`,
+        # raising `CancelledError` (a `BaseException` since Python 3.8) — a
+        # bare `except Exception` misses it, so a timeout used to skip the
+        # DLQ entirely (hard rule #7). Always re-raised below.
         await _handle_failure(ctx, "process_comment", {"comment_id": comment_id}, exc)
         raise
 
@@ -71,13 +75,51 @@ async def process_asset(ctx: dict[str, Any], asset_id: int) -> str:
         async with session_scope(factory) as session:
             state = await run_asset(asset_id, session, audit_factory=factory)
         return f"asset {asset_id} processed by {', '.join(state.agents_run)}"
-    except Exception as exc:
+    except (Exception, asyncio.CancelledError) as exc:
         await _handle_failure(ctx, "process_asset", {"asset_id": asset_id}, exc)
         raise
 
 
+async def process_ideation(ctx: dict[str, Any], brand_id: int) -> str:
+    """Run one ideation call for a brand, triggered on demand (a "Generate
+    Ideas" click), not by a queued comment or asset row.
+
+    Same shape as `process_comment`/`process_asset` down to the failure
+    handling, deliberately: one DLQ, one Retry button, one place a timeout is
+    handled, regardless of which of the three jobs it was.
+    """
+    bind_job_context(ctx)
+    factory = ctx["session_factory"]
+
+    try:
+        async with session_scope(factory) as session:
+            state = await run_ideation(brand_id, session, audit_factory=factory)
+        return f"ideation for brand {brand_id} processed by {', '.join(state.agents_run)}"
+    except (Exception, asyncio.CancelledError) as exc:
+        await _handle_failure(ctx, "process_ideation", {"brand_id": brand_id}, exc)
+        raise
+
+
+async def process_insight(ctx: dict[str, Any], brand_id: int) -> str:
+    """Run one insight call for a brand, triggered on demand (a "Generate
+    insights" click). Same shape as `process_ideation`."""
+    bind_job_context(ctx)
+    factory = ctx["session_factory"]
+
+    try:
+        async with session_scope(factory) as session:
+            state = await run_insight(brand_id, session, audit_factory=factory)
+        return f"insight for brand {brand_id} processed by {', '.join(state.agents_run)}"
+    except (Exception, asyncio.CancelledError) as exc:
+        await _handle_failure(ctx, "process_insight", {"brand_id": brand_id}, exc)
+        raise
+
+
 async def _handle_failure(
-    ctx: dict[str, Any], job_type: str, payload: dict[str, Any], exc: Exception
+    ctx: dict[str, Any],
+    job_type: str,
+    payload: dict[str, Any],
+    exc: Exception | asyncio.CancelledError,
 ) -> None:
     """Log every attempt; dead-letter only the last one.
 
@@ -92,7 +134,11 @@ async def _handle_failure(
 
 
 async def _record_failure(
-    factory: Any, job_type: str, payload: dict[str, Any], exc: Exception, attempts: int
+    factory: Any,
+    job_type: str,
+    payload: dict[str, Any],
+    exc: Exception | asyncio.CancelledError,
+    attempts: int,
 ) -> None:
     """The DLQ (hard rule #7). Payload must be enough to re-enqueue: the Failed
     Jobs panel has a Retry button that reads exactly this row.
@@ -135,9 +181,7 @@ async def drain_outbox(ctx: dict[str, Any]) -> str:
 
     async with session_scope(factory) as session:
         pending = (
-            (await session.execute(select(Outbox).where(Outbox.sent_at.is_(None))))
-            .scalars()
-            .all()
+            (await session.execute(select(Outbox).where(Outbox.sent_at.is_(None)))).scalars().all()
         )
         for row in pending:
             row.sent_at = datetime.now(UTC)
@@ -213,7 +257,14 @@ class WorkerSettings:
 
     # drain_outbox stays registered so it can also be triggered by hand, but the
     # periodic run is the asyncio loop started in `startup`, not a cron job.
-    functions = [process_comment, process_asset, drain_outbox, ping]
+    functions = [
+        process_comment,
+        process_asset,
+        process_ideation,
+        process_insight,
+        drain_outbox,
+        ping,
+    ]
     on_startup = startup
     on_shutdown = shutdown
     redis_settings = RedisSettings.from_dsn(get_settings().redis_url)
@@ -223,13 +274,23 @@ class WorkerSettings:
     # load on the first job after an idle gap, which is the slowest thing either
     # path can hit.
     job_timeout = 300
-    # Two slots, not one. One is the honest setting for LLM work — the machine
-    # is memory-bandwidth-bound on a 9B model, so concurrency buys no throughput
-    # and muddies the latency numbers step 9 measures (D4). But arq counts cron
-    # jobs against the same limit, so at one slot the outbox drain never gets
-    # scheduled while a replay is running: a human clicks Approve and nothing
-    # publishes until the queue empties. The second slot exists for that
-    # millisecond-long database job, not for throughput. Ollama serializes
-    # requests per model anyway, so two comment jobs overlapping does not double
-    # the model thrashing.
-    max_jobs = 2
+    # One slot, not two. This used to be two — the second reserved for
+    # drain_outbox, back when it ran as an arq cron job counted against this
+    # same limit. It no longer does: `_outbox_loop` drains it on a plain
+    # asyncio timer outside arq's scheduling entirely (see that function's own
+    # docstring), so nothing here needs a second slot for it any more — that
+    # reasoning was never updated when the outbox loop moved off arq.
+    #
+    # Measured, not assumed: at two slots, an asset job and an insight job
+    # started running "concurrently" from arq's point of view, but Ollama
+    # serializes requests per model, so the second one just sat blocked on the
+    # HTTP call for its entire `job_timeout` window with zero real progress —
+    # both timed out together, and the one that hit a slow-to-cancel state
+    # landed as a hard `TimeoutError` instead of a clean `CancelledError`,
+    # which arq does not auto-retry (it removes the job from its queue
+    # outright on that path — see arq's `run_job`/`finish_job`, where only a
+    # clean `CancelledError` takes the "will be run again" branch). One slot
+    # makes that collision structurally impossible: only one job — and so only
+    # one Ollama call — runs at a time, matching what Ollama already enforces
+    # anyway.
+    max_jobs = 1

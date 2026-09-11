@@ -86,7 +86,51 @@ export interface Asset {
   drafts: ContentDraft[];
 }
 
-export type AgentName = "triage" | "response" | "content" | "media";
+export type ContentIdeaStatus = "proposed" | "approved" | "rejected";
+
+/** The Ideation Agent's proposals. Approving one is inspiration only — it
+ *  triggers nothing. The manager still uploads a photo through the Content
+ *  page as always. */
+export interface ContentIdea {
+  id: number;
+  brand_id: number;
+  text: string;
+  source_signal: string | null;
+  agent_run_id: number | null;
+  status: ContentIdeaStatus;
+  created_at: string;
+}
+
+export interface GenerateIdeasResult {
+  enqueued: boolean;
+}
+
+/** A real published post and its real metrics — what the Insights chart is
+ *  computed from. Nothing here is a forecast. */
+export interface Post {
+  id: number;
+  account_id: number;
+  external_id: string;
+  text: string;
+  posted_at: string;
+  metrics_json: { likes?: number; comments?: number; shares?: number; impressions?: number };
+}
+
+/** The Insight Agent's plain-language pattern markers, grounded in real
+ *  metrics_json — no fabricated score, no prediction for unposted content. */
+export interface Insight {
+  id: number;
+  brand_id: number;
+  text: string;
+  agent_run_id: number | null;
+  created_at: string;
+}
+
+export interface GenerateInsightsResult {
+  enqueued: boolean;
+}
+
+export type AgentName = "triage" | "response" | "content" | "media" | "ideation" | "insight";
 export type AgentRunStatus = "ok" | "error";
 
 export interface AgentRun {
@@ -247,6 +291,32 @@ export const api = {
     request<ContentDraft>(`/content_drafts/${id}`, {
       method: "PATCH",
       body: JSON.stringify(body),
+    }),
+
+  contentIdeas: (brandId: number, filters: { status?: ContentIdeaStatus } = {}) => {
+    const params = new URLSearchParams({ brand_id: String(brandId), limit: "100" });
+    if (filters.status) params.set("status", filters.status);
+    return request<ContentIdea[]>(`/content_ideas?${params}`);
+  },
+
+  updateContentIdea: (id: number, status: ContentIdeaStatus) =>
+    request<ContentIdea>(`/content_ideas/${id}`, {
+      method: "PATCH",
+      body: JSON.stringify({ status }),
+    }),
+
+  generateIdeas: (brandId: number) =>
+    request<GenerateIdeasResult>(`/content_ideas/generate?brand_id=${brandId}`, {
+      method: "POST",
+    }),
+
+  posts: (brandId: number) => request<Post[]>(`/posts?brand_id=${brandId}&limit=50`),
+
+  insights: (brandId: number) => request<Insight[]>(`/insights?brand_id=${brandId}&limit=50`),
+
+  generateInsights: (brandId: number) =>
+    request<GenerateInsightsResult>(`/insights/generate?brand_id=${brandId}`, {
+      method: "POST",
     }),
 
   agentRuns: (brandId: number, filters: AgentRunFilters = {}) => {

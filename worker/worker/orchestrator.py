@@ -24,8 +24,11 @@ database (hard rule #3).
 
 from __future__ import annotations
 
+import asyncio
+import json
 from dataclasses import dataclass, field
 from datetime import UTC, datetime
+from pathlib import Path
 from typing import Protocol
 
 import structlog
@@ -35,6 +38,8 @@ from app.models import (
     Brand,
     Comment,
     ContentDraft,
+    ContentIdea,
+    Insight,
     PlatformAccount,
     Post,
     ReplyDraft,
@@ -46,10 +51,14 @@ from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
 from worker.agents.base import BaseAgent
 from worker.agents.content import ContentAgent
+from worker.agents.ideation import IdeationAgent
+from worker.agents.insight import InsightAgent
 from worker.agents.media import MediaAgent
 from worker.agents.response import ResponseAgent
 from worker.agents.schemas import (
     ContentInput,
+    IdeationInput,
+    InsightInput,
     MediaInput,
     MediaOutput,
     PlatformDraft,
@@ -196,7 +205,12 @@ async def _run_agent[InputT: BaseModel, OutputT: BaseModel](
     """
     try:
         output, usage = await agent.run_with_usage(payload)
-    except Exception as exc:
+    except (Exception, asyncio.CancelledError) as exc:
+        # arq's `job_timeout` cancels this coroutine via `asyncio.wait_for`,
+        # which raises `CancelledError` — a `BaseException` since Python 3.8,
+        # so a bare `except Exception` misses it and a timeout leaves no row
+        # (hard rule #5). Recording it here does not swallow the cancellation:
+        # it is always re-raised below.
         await _record_failed_run(state, name, exc)
         raise
 
@@ -204,7 +218,9 @@ async def _run_agent[InputT: BaseModel, OutputT: BaseModel](
     return output, run_id
 
 
-async def _record_failed_run(state: AuditableState, agent: str, exc: Exception) -> None:
+async def _record_failed_run(
+    state: AuditableState, agent: str, exc: Exception | asyncio.CancelledError
+) -> None:
     """Persist the failure independently of the job's transaction.
 
     Best-effort by design: if this write itself fails, the original agent error
@@ -212,8 +228,13 @@ async def _record_failed_run(state: AuditableState, agent: str, exc: Exception) 
     problem would hide the actual cause from `failed_jobs`.
     """
     detail = f"{type(exc).__name__}: {exc}"[:2000]
-    log.warning("agent.failed", agent=agent, entity=state.entity_type,
-                entity_id=state.entity_id, error=detail)
+    log.warning(
+        "agent.failed",
+        agent=agent,
+        entity=state.entity_type,
+        entity_id=state.entity_id,
+        error=detail,
+    )
 
     if state.audit_factory is None:
         # No factory: a test driving the graph directly on one session. Writing
@@ -429,6 +450,54 @@ class AssetState:
     @property
     def entity_id(self) -> int:
         return self.asset_id
+
+
+@dataclass
+class IdeationState:
+    """Everything one ideation run needs.
+
+    No graph: a single agent call has no branching or multi-step state to pass
+    between nodes, so `pydantic-graph` would buy nothing here that D12 didn't
+    already reject buying for a *two*-step chain. `_run_agent` and the
+    `AuditableState` protocol are the only things reused — the audit trail
+    (hard rule #5) still applies to a call outside a graph.
+    """
+
+    brand_id: int
+    session: AsyncSession
+    audit_factory: async_sessionmaker[AsyncSession] | None = None
+
+    agents_run: list[str] = field(default_factory=list)
+
+    @property
+    def entity_type(self) -> str:
+        # D7: unconstrained at the database, same as "comment"/"asset". This
+        # run is about the brand as a whole, not one comment or asset row.
+        return "brand"
+
+    @property
+    def entity_id(self) -> int:
+        return self.brand_id
+
+
+# D31-style: a static, hand-curated JSON file, not a database table and not an
+# admin UI. One consumer (`run_ideation`), same reasoning as PROMPTS_DIR in
+# llm.py — resolved relative to this file, not the process's cwd.
+TRENDS_PATH = Path(__file__).parent.parent / "data" / "trends.json"
+
+
+def _load_trend_signals(brand_name: str) -> list[str]:
+    """This brand's seeded content-angle categories, or an empty list.
+
+    Missing file or missing brand both return empty rather than raising — a
+    brand with no seeded trends yet is a data gap, not a job failure, and
+    `run_ideation` renders an empty list as "none" the same way `_rule_list`
+    does for an unset brand rule.
+    """
+    if not TRENDS_PATH.exists():
+        return []
+    data = json.loads(TRENDS_PATH.read_text())
+    return [line for line in data.get(brand_name, []) if isinstance(line, str)]
 
 
 def _rule_list(values: object) -> str:
@@ -662,6 +731,154 @@ async def run_asset(
     return state
 
 
+async def run_ideation(
+    brand_id: int,
+    session: AsyncSession,
+    audit_factory: async_sessionmaker[AsyncSession] | None = None,
+) -> IdeationState:
+    """The ideation entry point. One agent call; see `IdeationState` for why
+    there is no graph here.
+
+    Unlike the comment/asset paths there is no idempotency guard: ideation is
+    triggered on demand (a "Generate Ideas" click), not by a queued row that
+    arq might retry, so there is no earlier attempt to detect and no work to
+    protect against re-doing.
+    """
+    state = IdeationState(brand_id=brand_id, session=session, audit_factory=audit_factory)
+
+    brand = await session.get(Brand, brand_id)
+    if brand is None:
+        raise LookupError(f"brand {brand_id} not found")
+
+    signals = _load_trend_signals(brand.name)
+    signals_text = "\n".join(signals) if signals else "none"
+
+    # Real markers if the Insight Agent has produced any for this brand — this
+    # is the feedback loop closing. Newest first, capped: an unbounded history
+    # would eventually push trend_signals out of the model's usable context.
+    insights = (
+        (
+            await session.execute(
+                select(Insight.text)
+                .where(Insight.brand_id == brand_id)
+                .order_by(Insight.id.desc())
+                .limit(5)
+            )
+        )
+        .scalars()
+        .all()
+    )
+    insights_text = "\n".join(insights) if insights else "none"
+
+    output, run_id = await _run_agent(
+        state,
+        "ideation",
+        IdeationAgent(),
+        IdeationInput(
+            brand_voice=brand.voice_guidelines,
+            trend_signals=signals_text,
+            past_insights=insights_text,
+        ),
+    )
+
+    for item in output.ideas:
+        session.add(
+            ContentIdea(
+                brand_id=brand_id,
+                text=item.text,
+                source_signal=item.source_signal,
+                agent_run_id=run_id,
+            )
+        )
+    await session.flush()
+
+    return state
+
+
+@dataclass
+class InsightState:
+    """Same shape as `IdeationState`, same reasoning: one agent call, no
+    branching, no `pydantic-graph`."""
+
+    brand_id: int
+    session: AsyncSession
+    audit_factory: async_sessionmaker[AsyncSession] | None = None
+
+    agents_run: list[str] = field(default_factory=list)
+
+    @property
+    def entity_type(self) -> str:
+        return "brand"
+
+    @property
+    def entity_id(self) -> int:
+        return self.brand_id
+
+
+def _summarize_posts(posts: list[Post]) -> str:
+    """One line per post: what it said and what it actually did.
+
+    Real numbers only — this is what keeps the agent's output honest (see
+    `prompts/insight.md` rules 3-4). Nothing here is a forecast; `metrics_json`
+    is filled in only after a post exists, so an unposted idea has no line
+    here to summarize in the first place.
+    """
+    lines = []
+    for post in posts:
+        metrics = post.metrics_json or {}
+        lines.append(
+            f"{post.text} — likes: {metrics.get('likes', 0)}, "
+            f"comments: {metrics.get('comments', 0)}, shares: {metrics.get('shares', 0)}"
+        )
+    return "\n".join(lines)
+
+
+async def run_insight(
+    brand_id: int,
+    session: AsyncSession,
+    audit_factory: async_sessionmaker[AsyncSession] | None = None,
+) -> InsightState:
+    """The insight entry point. One agent call over real post performance.
+
+    Raises if the brand has no posts yet — generating "patterns" from zero
+    data would mean the model inventing them, which is exactly what the
+    honesty rule in `prompts/insight.md` exists to prevent. Better as a clear
+    dead-lettered error than a hallucinated marker on the Insights page.
+    """
+    state = InsightState(brand_id=brand_id, session=session, audit_factory=audit_factory)
+
+    brand = await session.get(Brand, brand_id)
+    if brand is None:
+        raise LookupError(f"brand {brand_id} not found")
+
+    posts = (
+        (
+            await session.execute(
+                select(Post)
+                .join(PlatformAccount, Post.account_id == PlatformAccount.id)
+                .where(PlatformAccount.brand_id == brand_id)
+            )
+        )
+        .scalars()
+        .all()
+    )
+    if not posts:
+        raise ValueError(f"brand {brand_id} has no posts to analyze yet")
+
+    output, run_id = await _run_agent(
+        state,
+        "insight",
+        InsightAgent(),
+        InsightInput(posts_summary=_summarize_posts(list(posts))),
+    )
+
+    for marker in output.markers:
+        session.add(Insight(brand_id=brand_id, text=marker, agent_run_id=run_id))
+    await session.flush()
+
+    return state
+
+
 def mermaid() -> str:
     """Step 10's comment diagram, generated from the definition rather than drawn."""
     return comment_graph.render(title="Comment pipeline", direction="LR")  # type: ignore[attr-defined]
@@ -676,6 +893,8 @@ __all__ = [
     "UTC",
     "AssetState",
     "CommentState",
+    "IdeationState",
+    "InsightState",
     "asset_graph",
     "comment_graph",
     "datetime",
@@ -683,4 +902,6 @@ __all__ = [
     "mermaid_asset",
     "run_asset",
     "run_comment",
+    "run_ideation",
+    "run_insight",
 ]

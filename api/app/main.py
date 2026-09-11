@@ -29,8 +29,10 @@ from app.routers import (
     brands,
     comments,
     content_drafts,
+    content_ideas,
     failed_jobs,
     ingest,
+    insights,
     platform_accounts,
     posts,
     reply_drafts,
@@ -84,6 +86,8 @@ app.include_router(comments.router)
 app.include_router(reply_drafts.router)
 app.include_router(assets.router)
 app.include_router(content_drafts.router)
+app.include_router(content_ideas.router)
+app.include_router(insights.router)
 app.include_router(agent_runs.router)
 app.include_router(failed_jobs.router)
 

@@ -8,6 +8,7 @@ once in `on_startup` and handed to jobs through the arq context rather than bein
 a module global.
 """
 
+import asyncio
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
 
@@ -46,6 +47,10 @@ async def session_scope(
         try:
             yield session
             await session.commit()
-        except Exception:
+        except (Exception, asyncio.CancelledError):
+            # A cancelled job (arq's `job_timeout`, via `asyncio.wait_for`)
+            # raises `CancelledError`, a `BaseException` since Python 3.8 —
+            # missed by a bare `except Exception`, same gap as the two failure
+            # writers this session eventually rolls back for.
             await session.rollback()
             raise

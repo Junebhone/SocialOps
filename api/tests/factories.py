@@ -11,7 +11,17 @@ from typing import Any
 
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.models import AgentRun, Asset, Brand, Comment, ContentDraft, PlatformAccount, Post
+from app.models import (
+    AgentRun,
+    Asset,
+    Brand,
+    Comment,
+    ContentDraft,
+    ContentIdea,
+    Insight,
+    PlatformAccount,
+    Post,
+)
 
 NOW = datetime(2026, 9, 9, 12, 0, tzinfo=UTC)
 
@@ -118,6 +128,34 @@ async def content_drafts(session: AsyncSession, asset: Asset) -> list[ContentDra
     for draft in drafts:
         await session.refresh(draft)
     return drafts
+
+
+async def a_content_idea(
+    session: AsyncSession,
+    brand: Brand | None = None,
+    text: str = "Film the morning roast.",
+    source_signal: str = "Behind-the-scenes angle",
+    status: str = "proposed",
+) -> ContentIdea:
+    brand = brand or await a_brand(session)
+    idea = ContentIdea(brand_id=brand.id, text=text, source_signal=source_signal, status=status)
+    session.add(idea)
+    await session.commit()
+    await session.refresh(idea)
+    return idea
+
+
+async def an_insight(
+    session: AsyncSession,
+    brand: Brand | None = None,
+    text: str = "Posts naming an ingredient percentage do well.",
+) -> Insight:
+    brand = brand or await a_brand(session)
+    insight = Insight(brand_id=brand.id, text=text)
+    session.add(insight)
+    await session.commit()
+    await session.refresh(insight)
+    return insight
 
 
 async def agent_run(
