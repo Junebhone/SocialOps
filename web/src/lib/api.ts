@@ -287,6 +287,15 @@ export const api = {
     });
   },
 
+  deleteAsset: (id: number) =>
+    request<{ deleted: boolean; detail: string }>(`/assets/${id}`, { method: "DELETE" }),
+
+  // Re-enqueues every comment still at `new` and every asset with no analysis.
+  // The right first move for a stuck card: the usual cause is a transient
+  // model-connection failure, which a retry clears.
+  requeueStuck: () =>
+    request<{ requeued: number }>(`/queue/requeue`, { method: "POST" }),
+
   updateContentDraft: (id: number, body: { status?: ContentDraftStatus; final_text?: string }) =>
     request<ContentDraft>(`/content_drafts/${id}`, {
       method: "PATCH",

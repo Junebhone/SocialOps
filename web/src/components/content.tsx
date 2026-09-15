@@ -156,6 +156,26 @@ function AssetCard({ asset, onChange }: { asset: Asset; onChange: () => Promise<
   const analysis = asset.analysis_json;
   const byPlatform = new Map(asset.drafts.map((draft) => [draft.platform, draft]));
 
+  const [confirming, setConfirming] = useState(false);
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  const stuck = analysis === null;
+
+  async function act(action: () => Promise<unknown>) {
+    setBusy(true);
+    setError(null);
+    try {
+      await action();
+      setConfirming(false);
+      await onChange();
+    } catch (err) {
+      setError((err as Error).message);
+    } finally {
+      setBusy(false);
+    }
+  }
+
   return (
     <article className="overflow-hidden rounded-lg border border-border">
       <div className="flex gap-4 p-4">
@@ -173,11 +193,64 @@ function AssetCard({ asset, onChange }: { asset: Asset; onChange: () => Promise<
         <div className="min-w-0 flex-1">
           <div className="flex items-start justify-between gap-3">
             <p className="truncate font-medium">{asset.filename}</p>
-            {analysis && <BrandCheckBadge value={analysis.brand_check} />}
+
+            <div className="flex shrink-0 items-center gap-2">
+              {analysis && <BrandCheckBadge value={analysis.brand_check} />}
+
+              {/* A two-step confirm rather than a dialog or a window.confirm():
+                  deleting the file is not undoable, but the UI brief rules out
+                  alert() and a modal is a lot of chrome for one button. */}
+              {confirming ? (
+                <>
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    disabled={busy}
+                    className="text-rose-700 dark:text-rose-300"
+                    onClick={() => act(() => api.deleteAsset(asset.id))}
+                  >
+                    Delete for good
+                  </Button>
+                  <Button size="sm" variant="ghost" onClick={() => setConfirming(false)}>
+                    Cancel
+                  </Button>
+                </>
+              ) : (
+                <>
+                  {/* Retry first on a stuck card. The usual cause is the model
+                      being unreachable, which a retry clears — deleting the
+                      upload for a fault that fixes itself would be the wrong
+                      default. */}
+                  {stuck && (
+                    <Button
+                      size="sm"
+                      variant="outline"
+                      disabled={busy}
+                      onClick={() => act(() => api.requeueStuck())}
+                    >
+                      Retry
+                    </Button>
+                  )}
+                  <Button
+                    size="sm"
+                    variant="ghost"
+                    disabled={busy}
+                    onClick={() => setConfirming(true)}
+                  >
+                    Delete
+                  </Button>
+                </>
+              )}
+            </div>
           </div>
 
+          {error && <p className="mt-1 text-xs text-rose-600">{error}</p>}
+
           {analysis === null ? (
-            <p className="mt-1 text-muted-foreground">Analysing the photo…</p>
+            <p className="mt-1 text-muted-foreground">
+              Analysing the photo… If it stays here, the model was unreachable —
+              Retry once Ollama is running, or delete the upload.
+            </p>
           ) : (
             <>
               <p className="mt-1 max-w-prose text-muted-foreground">{analysis.description}</p>

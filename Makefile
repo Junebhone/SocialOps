@@ -65,6 +65,11 @@ diagrams:
 demo:
 	./scripts/demo.sh
 
+# Post one comment and wait for the agents. `make comment TEXT="..."`.
+# See scripts/comment.sh --help for brand selection and the no-wait flag.
+comment:
+	@./scripts/comment.sh $(if $(BRAND),-b $(BRAND),) "$(TEXT)"
+
 models:
 	ollama pull qwen3.5:2b
 	ollama pull qwen3.5:9b

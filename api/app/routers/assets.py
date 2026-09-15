@@ -7,6 +7,7 @@ photo and watch three platform-specific drafts appear". Everything after the
 
 from typing import Annotated, Any
 
+import structlog
 from fastapi import APIRouter, HTTPException, UploadFile
 from fastapi.responses import Response
 from pydantic import BaseModel
@@ -20,6 +21,8 @@ from app.services.queue import enqueue_asset
 from app.storage import ASSET_FILE_ROUTE, StorageBackend, StorageError, new_key
 
 router = APIRouter(tags=["assets"])
+
+log = structlog.get_logger()
 
 # What a vision model can actually read, and nothing else. An allowlist rather
 # than a blocklist: the file is decoded by Pillow in the worker and then sent to
@@ -152,6 +155,52 @@ async def list_assets(
             card.drafts.append(ContentDraftRead.model_validate(draft))
 
     return list(assets.values())
+
+
+class DeleteResult(BaseModel):
+    deleted: bool
+    detail: str
+
+
+@router.delete("/assets/{asset_id}", response_model=DeleteResult)
+async def delete_asset(asset_id: int, session: SessionDep, storage: StorageDep) -> Any:
+    """Remove one asset, its captions, and its stored file.
+
+    This exists because an upload whose media run failed has no other way out.
+    `analysis_json` stays NULL, so the card reads "Analysing the photo…"
+    forever — the same shape of dead end the DLQ had before Discard (D30).
+    Retry via `POST /queue/requeue` is the better first move when the cause was
+    transient, which it usually is; this is for when it was not.
+
+    The `content_drafts` go with it: the FK already cascades, and a caption
+    about a photo nobody can see is not worth keeping.
+
+    The `agent_runs` rows deliberately do NOT go with it. They have no foreign
+    key by design (D7 — `entity_id` is polymorphic), and an audit trail that
+    disappears when someone tidies up the thing it audited is not an audit
+    trail. The run that cost tokens still happened; the Agents page still shows
+    it, and `entity_id` still says which asset it was about.
+    """
+    asset = await session.get(Asset, asset_id)
+    if asset is None:
+        raise HTTPException(status_code=404, detail="Asset not found")
+
+    key, filename = asset.storage_key, asset.filename
+    await session.delete(asset)
+    # Row first, then the bytes. If this order fails halfway, the result is an
+    # orphaned file — invisible, and reclaimable. The other order leaves a card
+    # on the page pointing at a file that is gone, which is a user-visible bug.
+    await session.commit()
+
+    try:
+        await storage.delete(key)
+    except StorageError:
+        # Best effort. The row is already gone, which is what the caller asked
+        # for; a file we could not unlink is a disk-space problem, not a failed
+        # request.
+        log.warning("asset.file_not_deleted", asset_id=asset_id, storage_key=key)
+
+    return DeleteResult(deleted=True, detail=f"Deleted {filename}")
 
 
 @router.get(

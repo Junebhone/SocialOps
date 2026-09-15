@@ -17,11 +17,11 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.main import app
-from app.models import Asset
+from app.models import Asset, ContentDraft
 from app.routers.params import get_storage
 from app.storage import LocalDiskStorage
 from tests.conftest import FakeQueue
-from tests.factories import a_brand
+from tests.factories import a_brand, agent_run
 
 
 @pytest.fixture(autouse=True)
@@ -230,3 +230,67 @@ async def test_the_served_mime_comes_from_the_row_not_the_extension(
     served = await client.get(created["asset"]["url"])
 
     assert served.headers["content-type"] == "image/png"
+
+
+# --- deleting an asset -----------------------------------------------------
+
+
+async def test_deleting_an_asset_removes_the_row_the_drafts_and_the_file(
+    client: AsyncClient, session: AsyncSession, storage: LocalDiskStorage
+) -> None:
+    """The way out of a stuck card. An upload whose media run failed keeps
+    analysis_json NULL forever, so it reads "Analysing the photo…" with no other
+    exit — the same dead end the DLQ had before Discard (D30)."""
+    brand = await a_brand(session)
+    created = (await client.post("/assets", params={"brand_id": brand.id}, files=upload())).json()
+    asset_id = created["asset"]["id"]
+    key = created["asset"]["storage_key"]
+    session.add(
+        ContentDraft(asset_id=asset_id, platform="x", text="A caption.", hashtags_json=[])
+    )
+    await session.commit()
+
+    body = (await client.delete(f"/assets/{asset_id}")).json()
+
+    assert body["deleted"] is True
+    assert (await session.get(Asset, asset_id)) is None
+    assert (await session.execute(select(ContentDraft))).scalars().all() == []
+    assert not (storage.root / key).exists()
+
+
+async def test_deleting_an_asset_keeps_its_audit_rows(
+    client: AsyncClient, session: AsyncSession
+) -> None:
+    """Deliberate. agent_runs has no foreign key to assets (D7 — entity_id is
+    polymorphic), and an audit trail that vanishes when someone tidies up the
+    thing it audited is not an audit trail. The run still cost tokens."""
+    brand = await a_brand(session)
+    created = (await client.post("/assets", params={"brand_id": brand.id}, files=upload())).json()
+    asset_id = created["asset"]["id"]
+    await agent_run(session, brand, "media", entity_type="asset", entity_id=asset_id)
+
+    await client.delete(f"/assets/{asset_id}")
+
+    runs = (await client.get("/agent_runs", params={"brand_id": brand.id})).json()
+    assert runs["total_runs"] == 1
+    assert runs["runs"][0]["entity_type"] == "asset"
+    assert runs["runs"][0]["entity_id"] == asset_id
+
+
+async def test_deleting_an_unknown_asset_is_a_404(client: AsyncClient) -> None:
+    assert (await client.delete("/assets/4242")).status_code == 404
+
+
+async def test_a_missing_file_does_not_fail_the_delete(
+    client: AsyncClient, session: AsyncSession, storage: LocalDiskStorage
+) -> None:
+    """The row is what the caller asked to remove. A file we could not unlink
+    is a disk-space problem, not a failed request."""
+    brand = await a_brand(session)
+    created = (await client.post("/assets", params={"brand_id": brand.id}, files=upload())).json()
+    await storage.delete(created["asset"]["storage_key"])
+
+    response = await client.delete(f"/assets/{created['asset']['id']}")
+
+    assert response.status_code == 200
+    assert (await session.get(Asset, created["asset"]["id"])) is None

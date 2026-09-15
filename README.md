@@ -229,7 +229,32 @@ curl -s localhost:8000/brands | jq -r '.[] | "\(.id)\t\(.name)"'
 2,000-comment dump costs nothing. It also means running it twice inserts nothing the second time
 and you will see `{"inserted":0,"skipped":300}`. To see work happen, give it rows it has not seen.
 
-**Write your own.** The most direct way to watch the pipeline think:
+**The quick way** — `scripts/comment.sh` handles the three things the raw curl
+makes you get right by hand, and waits for the answer:
+
+```bash
+./scripts/comment.sh "Do you ship to Singapore?"
+./scripts/comment.sh -b fieldnote "Is this suitable for sensitive skin?"
+./scripts/comment.sh -n "check out my page, free followers"   # post, don't wait
+```
+
+```
+Posting to Ridgeline Roasters (@ridgelineroasters, post-0-0)
+  {"inserted":1,"skipped":0,"enqueued":1,"rejected":0}
+Waiting for triage......
+  category  question   sentiment 1   urgency low
+  status    drafted
+  draft     We focus on direct sales for now, but our wholesale rate is available
+            for cafes within 150 miles of the roastery.
+```
+
+It generates a fresh `external_id` every run, stamps `created_at` to now, and
+resolves the handle and post from the API rather than assuming seed order. It
+also checks Ollama **before** posting — without the model running a comment
+ingests perfectly and then simply never gets a draft, which reads as the app
+being broken when it is one stopped process on the host.
+
+**By hand.** The same thing, spelled out:
 
 ```bash
 curl -X POST http://localhost:8000/ingest/comments \
