@@ -1,5 +1,10 @@
 .PHONY: up down logs migrate seed test lint replay replay-full eval measure measure-full diagrams demo models models-light reset prune tf-check tf-init tf-plan tf-apply
 
+# `docker compose exec` allocates a TTY by default, which a CI runner does not
+# have. CI calls `make test DC_EXEC="docker compose exec -T"`; locally nothing
+# changes.
+DC_EXEC ?= docker compose exec
+
 up:
 	docker compose up --build -d
 	@# Building orphans the previous images — ~2 GB per rebuild, which fills
@@ -16,18 +21,18 @@ logs:
 	docker compose logs -f api worker
 
 migrate:
-	docker compose exec api alembic upgrade head
+	$(DC_EXEC) api alembic upgrade head
 
 seed:
-	docker compose exec api python /app/data/seed.py
+	$(DC_EXEC) api python /app/data/seed.py
 
 test:
-	docker compose exec api pytest -q
-	docker compose exec worker pytest -q
+	$(DC_EXEC) api pytest -q
+	$(DC_EXEC) worker pytest -q
 
 lint:
-	docker compose exec api ruff check . && docker compose exec api mypy app tests
-	docker compose exec worker ruff check . && docker compose exec worker mypy worker tests
+	$(DC_EXEC) api ruff check . && $(DC_EXEC) api mypy app tests
+	$(DC_EXEC) worker ruff check . && $(DC_EXEC) worker mypy worker tests
 	cd web && npx eslint . --max-warnings=0
 
 replay:
@@ -43,7 +48,7 @@ replay-full:
 	  --data @data/viral_post_dump.json http://localhost:8000/ingest/comments | jq .
 
 eval:
-	docker compose exec worker python -m worker.eval data/eval.json
+	$(DC_EXEC) worker python -m worker.eval data/eval.json
 
 # Time a replay and print the Markdown block step 9 records in the README.
 # Reads the percentiles off GET /agent_runs — the same query the Agents page

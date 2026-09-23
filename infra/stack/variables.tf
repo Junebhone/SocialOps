@@ -101,12 +101,12 @@ variable "services" {
 }
 
 variable "image_tag" {
-  description = "Image tag to deploy: the git SHA CI pushed. Deploying a new build is a PR that changes this line."
+  description = "Image tag to deploy: the full git SHA of a commit CI built on main. Deploying a new build is a PR that changes this line."
   type        = string
 
   validation {
-    condition     = can(regex("^[0-9a-f]{7,40}$", var.image_tag))
-    error_message = "image_tag must be a git SHA (7-40 lowercase hex characters). ECR tags are immutable, so a moving tag like latest cannot be pushed twice."
+    condition     = can(regex("^[0-9a-f]{40}$", var.image_tag))
+    error_message = "image_tag must be a full 40-character git SHA: that is the tag CI pushes. ECR tags are immutable, so a moving tag like latest could never be pushed twice."
   }
 }
 

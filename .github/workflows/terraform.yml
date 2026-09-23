@@ -1,0 +1,216 @@
+# Terraform on every pull request:
+#
+#   check  fmt, validate, tflint, and the mocked-provider tests for both
+#          environments. Needs no AWS account, so it always runs.
+#   plan   a real `terraform plan` per workspace (dev, staging), posted as a
+#          comment on the pull request and updated on every push. Needs the
+#          AWS setup from infra/README.md; until then it reports "skipped"
+#          with instructions instead of failing.
+#
+# Nothing here applies. Applying is a deliberate act by a person.
+
+name: Terraform
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: terraform-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+env:
+  TF_IN_AUTOMATION: "1"
+  TF_INPUT: "0"
+  TFLINT_VERSION: v0.64.0
+
+jobs:
+  check:
+    name: fmt, validate, tflint, test
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - name: Read pinned Terraform version
+        id: tf
+        run: echo "version=$(cat .terraform-version)" >> "$GITHUB_OUTPUT"
+
+      - uses: hashicorp/setup-terraform@dfe3c3f87815947d99a8997f908cb6525fc44e9e # v4.0.1
+        with:
+          terraform_version: ${{ steps.tf.outputs.version }}
+          terraform_wrapper: false
+
+      - uses: terraform-linters/setup-tflint@1cf010d3c7aef302051ccdb68c14c5dc2efa34ef # v6.3.1
+        with:
+          tflint_version: ${{ env.TFLINT_VERSION }}
+
+      # The same script as `make tf-check`.
+      - name: Offline checks
+        run: ./scripts/tf-check.sh
+        env:
+          # tflint --init downloads the AWS ruleset from GitHub releases.
+          GITHUB_TOKEN: ${{ github.token }}
+
+  plan:
+    name: Plan (${{ matrix.environment }})
+    needs: check
+    # Fork PRs get no OIDC token and no repository variables, so they could not
+    # plan anyway. Teammates push branches to this repository instead.
+    if: github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name == github.repository
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    permissions:
+      contents: read
+      id-token: write # OIDC token for the read-only plan role
+      pull-requests: write # the plan comment
+    strategy:
+      fail-fast: false
+      matrix:
+        environment: [dev, staging]
+    env:
+      TF_ENV: ${{ matrix.environment }}
+      AWS_PLAN_ROLE_ARN: ${{ vars.AWS_PLAN_ROLE_ARN }}
+      TF_STATE_BUCKET: ${{ vars.TF_STATE_BUCKET }}
+      AWS_REGION: ${{ vars.AWS_REGION }}
+    steps:
+      - name: Is AWS configured?
+        id: aws
+        run: |
+          if [ -n "$AWS_PLAN_ROLE_ARN" ] && [ -n "$TF_STATE_BUCKET" ] && [ -n "$AWS_REGION" ]; then
+            echo "configured=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "configured=false" >> "$GITHUB_OUTPUT"
+            {
+              echo "### Terraform plan for \`$TF_ENV\` skipped"
+              echo "The repository variables AWS_REGION, TF_STATE_BUCKET and AWS_PLAN_ROLE_ARN are not set."
+              echo "Apply infra/bootstrap once, then run the \`gh variable set\` commands it prints (infra/README.md, step 1)."
+            } >> "$GITHUB_STEP_SUMMARY"
+            echo "::notice title=Terraform plan skipped::AWS is not configured for this repository yet. See infra/README.md."
+          fi
+
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        if: steps.aws.outputs.configured == 'true'
+
+      - name: Read pinned Terraform version
+        if: steps.aws.outputs.configured == 'true'
+        id: tf
+        run: echo "version=$(cat .terraform-version)" >> "$GITHUB_OUTPUT"
+
+      - uses: hashicorp/setup-terraform@dfe3c3f87815947d99a8997f908cb6525fc44e9e # v4.0.1
+        if: steps.aws.outputs.configured == 'true'
+        with:
+          terraform_version: ${{ steps.tf.outputs.version }}
+          terraform_wrapper: false
+
+      - name: AWS credentials (OIDC, read-only)
+        if: steps.aws.outputs.configured == 'true'
+        uses: aws-actions/configure-aws-credentials@e1253824e5c10ff9df46874f81ed3ec929e19cfd # v6.3.0
+        with:
+          role-to-assume: ${{ vars.AWS_PLAN_ROLE_ARN }}
+          aws-region: ${{ vars.AWS_REGION }}
+          role-session-name: tf-plan-${{ matrix.environment }}-${{ github.run_id }}
+          mask-aws-account-id: true
+
+      - name: terraform init
+        if: steps.aws.outputs.configured == 'true'
+        run: terraform -chdir=infra/stack init -no-color -backend-config="bucket=$TF_STATE_BUCKET"
+
+      # `select`, not `select -or-create`: the plan role cannot write state, and
+      # creating a workspace is part of the documented one-time setup.
+      - name: Select workspace
+        if: steps.aws.outputs.configured == 'true'
+        run: |
+          terraform -chdir=infra/stack workspace select -no-color "$TF_ENV" || {
+            echo "::error::Workspace $TF_ENV does not exist. Create it once with: make tf-plan ENV=$TF_ENV (infra/README.md, step 2)."
+            exit 1
+          }
+
+      - name: terraform plan
+        if: steps.aws.outputs.configured == 'true'
+        id: plan
+        run: |
+          set +e
+          terraform -chdir=infra/stack plan -no-color -lock-timeout=5m -detailed-exitcode \
+            -var-file="env/$TF_ENV.tfvars" -out=tfplan > plan.log 2>&1
+          code=$?
+          set -e
+          if [ "$code" -eq 1 ]; then
+            cp plan.log plan.txt
+            echo "outcome=failed" >> "$GITHUB_OUTPUT"
+          else
+            terraform -chdir=infra/stack show -no-color tfplan > plan.txt
+            [ "$code" -eq 2 ] && echo "outcome=changes" >> "$GITHUB_OUTPUT" || echo "outcome=no-changes" >> "$GITHUB_OUTPUT"
+          fi
+          # The repository is public, and so are its PR comments. Resource ARNs
+          # carry the account ID; replace it before anything is posted.
+          account_id=$(aws sts get-caller-identity --query Account --output text)
+          sed -i "s/$account_id/<account-id>/g" plan.txt
+          cat plan.txt
+
+      - name: Comment the plan on the pull request
+        if: steps.aws.outputs.configured == 'true' && always() && steps.plan.outputs.outcome != ''
+        uses: actions/github-script@3a2844b7e9c422d3c10d287c895573f7108da1b3 # v9.0.0
+        env:
+          OUTCOME: ${{ steps.plan.outputs.outcome }}
+        with:
+          script: |
+            const fs = require('fs');
+            const env = process.env.TF_ENV;
+            const outcome = process.env.OUTCOME;
+            // One comment per environment, found again by this marker and
+            // edited in place, so a PR with ten pushes has two comments, not 20.
+            const marker = `<!-- terraform-plan:${env} -->`;
+
+            let plan = fs.readFileSync('plan.txt', 'utf8');
+            const limit = 60000; // GitHub rejects comments over 65,536 characters
+            if (plan.length > limit) {
+              plan = plan.slice(0, limit) + '\n\n... truncated. The full plan is in the workflow log.';
+            }
+
+            const headline = {
+              'changes': (plan.match(/^Plan: .*$/m) || ['Changes planned'])[0],
+              'no-changes': 'No changes. Infrastructure matches the configuration.',
+              'failed': 'terraform plan failed',
+            }[outcome];
+            const icon = { 'changes': '🟡', 'no-changes': '🟢', 'failed': '🔴' }[outcome];
+            const run = `${context.serverUrl}/${context.repo.owner}/${context.repo.repo}/actions/runs/${context.runId}`;
+
+            const body = [
+              marker,
+              `### ${icon} Terraform plan · \`${env}\``,
+              '',
+              `**${headline}**`,
+              '',
+              '<details><summary>Show plan</summary>',
+              '',
+              '```',
+              plan,
+              '```',
+              '',
+              '</details>',
+              '',
+              `<sub>Workspace \`${env}\` · env/${env}.tfvars · commit ${context.payload.pull_request.head.sha.slice(0, 7)} · [workflow run](${run})</sub>`,
+            ].join('\n');
+
+            const comments = await github.paginate(github.rest.issues.listComments, {
+              ...context.repo,
+              issue_number: context.issue.number,
+              per_page: 100,
+            });
+            const existing = comments.find(c => c.user.type === 'Bot' && c.body.includes(marker));
+            if (existing) {
+              await github.rest.issues.updateComment({ ...context.repo, comment_id: existing.id, body });
+            } else {
+              await github.rest.issues.createComment({ ...context.repo, issue_number: context.issue.number, body });
+            }
+
+      - name: Fail if the plan failed
+        if: steps.plan.outputs.outcome == 'failed'
+        run: |
+          echo "::error::terraform plan failed for $TF_ENV. The error is in the PR comment and the log above."
+          exit 1

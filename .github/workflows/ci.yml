@@ -1,0 +1,141 @@
+# Lint and test the app on every pull request, build the three images, and
+# push them to ECR when a commit lands on main.
+#
+# Actions are pinned to full commit SHAs, with the release tag in a comment.
+# A tag can be moved to different code after the fact; a SHA cannot.
+
+name: CI
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.ref }}
+  # Superseded PR runs are cancelled; a run on main always finishes, because
+  # it is the one that pushes images.
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+jobs:
+  app:
+    name: Lint and test
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: 24
+
+      # The same stack and the same Makefile targets a developer runs, so a
+      # green check means `make lint && make test` passes on a clean clone.
+      # .env.example is the committed template; it names no real secret, and
+      # no test reaches Ollama (ALLOW_MODEL_REQUESTS = False, hard rule #10).
+      - name: Start postgres, redis, api and worker
+        run: |
+          cp .env.example .env
+          docker compose up --build --detach --wait --wait-timeout 300 postgres redis api worker
+
+      # `npm install`, not `npm ci`, for the reason web/Dockerfile gives: the
+      # lockfile is written on macOS and lacks the Linux native binaries.
+      - name: Install web dependencies
+        working-directory: web
+        run: npm install --no-audit --no-fund
+
+      - name: Lint (ruff, mypy, eslint)
+        run: make lint DC_EXEC="docker compose exec -T"
+
+      - name: Test (pytest api + worker)
+        run: make test DC_EXEC="docker compose exec -T"
+
+      - name: Container logs
+        if: failure()
+        run: docker compose logs --no-color --tail 200
+
+  images:
+    name: Image (${{ matrix.service }})
+    # Only code that passed lint and tests is built, and only that is pushed.
+    needs: app
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    permissions:
+      contents: read
+      id-token: write # OIDC token for AWS; only exchanged on main
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - service: api
+            context: api
+            dockerfile: api/Dockerfile
+          # Built from the repo root: it copies the api package's models (D24).
+          - service: worker
+            context: .
+            dockerfile: worker/Dockerfile
+          - service: web
+            context: web
+            dockerfile: web/Dockerfile
+    env:
+      # Push only from main, and only once infra/bootstrap has created the role
+      # and the repository variables are set. Before that, images are still
+      # built on every run, so a broken Dockerfile fails the PR that broke it.
+      PUSH: ${{ github.event_name == 'push' && github.ref == 'refs/heads/main' && vars.AWS_ECR_PUSH_ROLE_ARN != '' }}
+      ECR_REPOSITORY_PREFIX: socialops
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - uses: docker/setup-buildx-action@f87e5991a6d7451dcb8d9637bfbc97413f497069 # v4.4.1
+
+      - name: AWS credentials (OIDC)
+        if: env.PUSH == 'true'
+        uses: aws-actions/configure-aws-credentials@e1253824e5c10ff9df46874f81ed3ec929e19cfd # v6.3.0
+        with:
+          role-to-assume: ${{ vars.AWS_ECR_PUSH_ROLE_ARN }}
+          aws-region: ${{ vars.AWS_REGION }}
+          role-session-name: ecr-push-${{ github.run_id }}
+
+      - name: Log in to ECR
+        if: env.PUSH == 'true'
+        id: ecr
+        uses: aws-actions/amazon-ecr-login@03f1aad4c6c7ffd436567f42f9384779290529bd # v2.1.7
+
+      - name: Image name
+        id: image
+        run: |
+          if [ "$PUSH" = "true" ]; then
+            echo "ref=${{ steps.ecr.outputs.registry }}/$ECR_REPOSITORY_PREFIX/${{ matrix.service }}:${{ github.sha }}" >> "$GITHUB_OUTPUT"
+          else
+            echo "ref=$ECR_REPOSITORY_PREFIX/${{ matrix.service }}:${{ github.sha }}" >> "$GITHUB_OUTPUT"
+          fi
+
+      # Tagged with the full commit SHA and nothing else. ECR tags are
+      # immutable, so this tag can only ever mean this commit, and
+      # infra/stack/env/*.tfvars pins exactly this value.
+      - name: Build${{ env.PUSH == 'true' && ' and push' || '' }}
+        uses: docker/build-push-action@c3c9e263c25d99ce0380d002d59b67737d91b0dc # v7.4.0
+        with:
+          context: ${{ matrix.context }}
+          file: ${{ matrix.dockerfile }}
+          platforms: linux/amd64 # the ECS task definitions run X86_64
+          push: ${{ env.PUSH == 'true' }}
+          tags: ${{ steps.image.outputs.ref }}
+          cache-from: type=gha,scope=${{ matrix.service }}
+          cache-to: type=gha,mode=max,scope=${{ matrix.service }}
+
+      - name: Summary
+        run: |
+          if [ "$PUSH" = "true" ]; then
+            {
+              echo "### Pushed \`${{ matrix.service }}\`"
+              echo "\`${{ steps.image.outputs.ref }}\`"
+              echo
+              echo "To deploy this build, set \`image_tag = \"${{ github.sha }}\"\` in \`infra/stack/env/<env>.tfvars\` in a pull request."
+            } >> "$GITHUB_STEP_SUMMARY"
+          else
+            echo "Built \`${{ steps.image.outputs.ref }}\` (not pushed: pushes happen on main once AWS is configured, see infra/README.md)." >> "$GITHUB_STEP_SUMMARY"
+          fi

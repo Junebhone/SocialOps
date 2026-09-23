@@ -27,7 +27,7 @@ services = {
 }
 
 # Promote a build by copying the SHA dev has been running into this line.
-image_tag = "da25d3d"
+image_tag = "da25d3d30cf1faf89761022d2308bc0e8929b8a3"
 
 log_retention_days = 30
 container_insights = true

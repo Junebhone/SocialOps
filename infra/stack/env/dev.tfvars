@@ -27,6 +27,6 @@ services = {
 
 # The git SHA to deploy. CI pushes every merge to main under its SHA; deploy a
 # new build by changing this line in a PR.
-image_tag = "da25d3d"
+image_tag = "da25d3d30cf1faf89761022d2308bc0e8929b8a3"
 
 log_retention_days = 7
