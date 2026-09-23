@@ -1,11 +1,26 @@
 # One copy of SocialOps: everything an environment needs, composed from
 # ../modules. Which environment is decided by the workspace and the tfvars file
-# (see infra/README.md); nothing in here names dev or staging.
+# together (see infra/README.md); nothing in here names dev or staging.
+#
+#   terraform workspace select dev
+#   terraform plan -var-file=env/dev.tfvars
 #
 # The ECR repositories are NOT created here. They belong to the account
 # (infra/bootstrap) because one image is promoted through every environment.
 
-data "aws_caller_identity" "current" {}
+# Workspace guard. Plan and apply stop here, before any resource is read or
+# changed, if the tfvars file and the workspace disagree: planning
+# env/staging.tfvars while the dev workspace is selected would otherwise
+# "update" dev's resources into staging's shape. It also keeps everything out
+# of the default workspace, whose state key no environment owns.
+data "aws_caller_identity" "current" {
+  lifecycle {
+    precondition {
+      condition     = !var.require_workspace_match || terraform.workspace == var.environment
+      error_message = "Workspace \"${terraform.workspace}\" does not match environment \"${var.environment}\". Run: terraform workspace select ${var.environment}   (or pass the matching env/<workspace>.tfvars)"
+    }
+  }
+}
 
 data "aws_ecr_repository" "this" {
   for_each = toset(["api", "worker", "web"])

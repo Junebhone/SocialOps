@@ -35,6 +35,12 @@ mock_provider "aws" {
   }
 }
 
+# terraform test always runs in the default workspace, so the guard that ties
+# workspace to environment is switched off here and exercised on its own below.
+variables {
+  require_workspace_match = false
+}
+
 run "environment_plans" {
   command = plan
 
@@ -82,4 +88,14 @@ run "rejects_unknown_llm_provider" {
   }
 
   expect_failures = [var.llm_provider]
+}
+
+run "refuses_workspace_that_does_not_match_environment" {
+  command = plan
+
+  variables {
+    require_workspace_match = true
+  }
+
+  expect_failures = [data.aws_caller_identity.current]
 }

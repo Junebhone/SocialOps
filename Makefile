@@ -1,4 +1,4 @@
-.PHONY: up down logs migrate seed test lint replay replay-full eval measure measure-full diagrams demo models models-light reset prune
+.PHONY: up down logs migrate seed test lint replay replay-full eval measure measure-full diagrams demo models models-light reset prune tf-check tf-init tf-plan tf-apply
 
 up:
 	docker compose up --build -d
@@ -93,3 +93,33 @@ prune:
 	docker image prune -f
 	docker builder prune -af
 	@docker run --rm alpine:3 df -h / | awk 'NR==2 {printf "  %s free of %s in the Docker VM\n", $$4, $$2}'
+
+# --- Terraform (Module 3) ----------------------------------------------------
+# Runbook and apply order: infra/README.md.
+#
+# ENV picks the workspace AND the tfvars file together — the pairing the guard
+# in infra/stack/main.tf enforces. It is checked here because some shells
+# export an unrelated ENV variable, which `?=` would silently pick up.
+ENV ?= dev
+tf_env = $(if $(filter $(ENV),dev staging),$(ENV),$(error ENV must be dev or staging, got '$(ENV)'))
+
+# Offline: fmt, validate, tflint, and the mocked-provider tests. No AWS needed.
+# CI runs the same script.
+tf-check:
+	./scripts/tf-check.sh
+
+# Once per clone. TF_STATE_BUCKET is printed by infra/bootstrap.
+tf-init:
+	@test -n "$(TF_STATE_BUCKET)" || { echo "Set TF_STATE_BUCKET=socialops-tfstate-<account-id> (infra/bootstrap prints it)"; exit 1; }
+	terraform -chdir=infra/stack init -backend-config="bucket=$(TF_STATE_BUCKET)"
+
+# Needs AWS credentials for the account the state bucket is in. Free.
+tf-plan:
+	terraform -chdir=infra/stack workspace select -or-create $(tf_env)
+	terraform -chdir=infra/stack plan -var-file=env/$(tf_env).tfvars -out=$(tf_env).tfplan
+
+# Applies exactly the plan tf-plan saved. This creates billable resources —
+# see "What it costs" in infra/README.md before running it.
+tf-apply:
+	terraform -chdir=infra/stack workspace select $(tf_env)
+	terraform -chdir=infra/stack apply $(tf_env).tfplan

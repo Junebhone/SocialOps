@@ -16,6 +16,12 @@ variable "environment" {
   }
 }
 
+variable "require_workspace_match" {
+  description = "Refuse to plan unless terraform.workspace equals var.environment. Only the offline tests turn this off, because terraform test always runs in the default workspace."
+  type        = bool
+  default     = true
+}
+
 variable "aws_region" {
   description = "Region for everything in this stack. us-east-1 has the widest Bedrock model coverage."
   type        = string
