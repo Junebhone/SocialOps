@@ -12,6 +12,7 @@ const NAV = [
   { href: "/content", label: "Content", icon: NavContent },
   { href: "/ideas", label: "Ideas", icon: NavIdeas },
   { href: "/insights", label: "Insights", icon: NavInsights },
+  { href: "/analytics", label: "Analytics", icon: NavAnalytics },
   { href: "/agents", label: "Agents", icon: NavAgents },
 ];
 
@@ -398,6 +399,14 @@ function NavInsights({ className }: { className?: string }) {
   return (
     <svg className={className} viewBox="0 0 18 18" {...iconProps()}>
       <path d="M3 14V8M7 14V4M11 14v-7M15 14v-3" />
+    </svg>
+  );
+}
+function NavAnalytics({ className }: { className?: string }) {
+  return (
+    <svg className={className} viewBox="0 0 18 18" {...iconProps()}>
+      <path d="M2.5 14.5h13" />
+      <path d="M3.5 11l3.5-3.5 3 2.5 4.5-5" />
     </svg>
   );
 }

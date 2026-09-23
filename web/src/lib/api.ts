@@ -197,6 +197,36 @@ export interface AgentRunFilters {
   entity_id?: number;
 }
 
+/** GET /analytics (ADR-0005). Every number is SQL, never a model; days are the brand's days. */
+export interface SentimentPoint {
+  day: string;
+  avg_sentiment: number;
+  comments: number;
+}
+
+export interface CategoryPoint {
+  day: string;
+  category: Category;
+  comments: number;
+}
+
+export interface ResponseTimes {
+  published: number;
+  p50_seconds: number | null;
+  p95_seconds: number | null;
+  histogram: { label: string; comments: number }[];
+}
+
+export interface Analytics {
+  brand_id: number;
+  timezone: string;
+  start: string;
+  end: string;
+  sentiment: SentimentPoint[];
+  categories: CategoryPoint[];
+  response_times: ResponseTimes;
+}
+
 /**
  * Resolve a path the API handed us against the API's origin.
  *
@@ -320,6 +350,13 @@ export const api = {
     }),
 
   posts: (brandId: number) => request<Post[]>(`/posts?brand_id=${brandId}&limit=50`),
+
+  analytics: (brandId: number, range: { from?: string; to?: string } = {}) => {
+    const params = new URLSearchParams({ brand_id: String(brandId) });
+    if (range.from) params.set("from", range.from);
+    if (range.to) params.set("to", range.to);
+    return request<Analytics>(`/analytics?${params}`);
+  },
 
   insights: (brandId: number) => request<Insight[]>(`/insights?brand_id=${brandId}&limit=50`),
 
