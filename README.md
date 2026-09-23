@@ -137,7 +137,8 @@ Live social platform APIs (X, Meta, TikTok) require paid access or lengthy app r
 | `web/` | Next.js app — Inbox, Content, Agents |
 | `data/` | Synthetic seed data, the two comment dumps, and the 50-comment eval set |
 | `scripts/` | `demo.sh`, `measure.py` (replay timings), `gen_diagrams.py` |
-| `infra/` | Empty in Phase 1 — Terraform lands with the AWS phases |
+| `infra/` | Terraform for AWS (Module 3): account bootstrap, one stack per workspace (dev, staging), ten modules. Runbook and apply order in [infra/README.md](infra/README.md) |
+| `.github/workflows/` | CI: lint and test, image build and push to ECR, and `terraform plan` posted on every pull request |
 | `LICENSE` | MIT License |
 
 ## Run it
@@ -513,6 +514,22 @@ reason the harness exists ([D5]).
 [D21]: docs/DECISIONS.md
 [D23]: docs/DECISIONS.md
 [ADR-0002]: docs/decisions/0002-llm-access-via-pydantic-ai.md
+
+### Deploy to AWS
+
+The same images run on ECS Fargate behind an ALB, with RDS, ElastiCache, S3 and
+SQS. All of it is Terraform in [`infra/`](infra/README.md), in two workspaces,
+`dev` and `staging`. A plan costs nothing and needs no running stack:
+
+```bash
+make tf-check                # fmt, validate, tflint, mocked-provider tests; no AWS account needed
+make tf-plan ENV=dev         # real plan; needs AWS credentials and the one-time setup
+```
+
+The one-time setup, the apply order, what an apply costs, and what still
+needs app code before the tasks start are all in
+[infra/README.md](infra/README.md). Every pull request also gets a plan
+comment for each environment from CI.
 
 ### Ports and services
 

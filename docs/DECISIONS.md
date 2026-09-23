@@ -937,6 +937,34 @@ actually opts into this pair).
 
 ---
 
+## D32 — AWS infrastructure is Terraform in two roots, planned in CI, applied by hand · `SETTLED`
+
+**Decision.** Module 3 adds `infra/`. `infra/bootstrap` holds the account-level
+pieces: the state bucket, the lock table, ECR, and the GitHub OIDC roles.
+`infra/stack` holds one environment per workspace, with dev and staging values
+in `env/*.tfvars` and a guard that refuses a workspace and tfvars pair that do
+not match. CI lints, tests and plans on every pull request and posts the plan
+as a comment. Nothing in CI can apply. Images are built once per merge to
+`main`, tagged with the commit SHA, and promoted by changing `image_tag`.
+
+**Why.** The brief makes `terraform plan` the deliverable and applying
+optional, so everything had to be checkable without spending money.
+`terraform test` with a mocked provider checks both environments' plans in
+CI with no AWS account. The app is re-platformed, not re-architected (D2).
+Every compose service maps onto a managed one, and the only env values that
+change are the ones D2 predicted.
+
+**Consequence.** Applying proves the infrastructure but does not yet run the
+app. `STORAGE_BACKEND=s3` and `LLM_PROVIDER=bedrock` need `S3Storage` and one
+`case` in `worker/llm.py`, both app changes for a later module. Full reasoning
+and alternatives are in [ADR-0006](decisions/0006-terraform-layout-and-ci.md).
+The runbook is [infra/README.md](../infra/README.md).
+
+**Touches:** `infra/` · `.github/workflows/` · `Makefile` (`tf-*` targets,
+`DC_EXEC`) · `.gitignore` · `README.md`.
+
+---
+
 ## Standing assumptions
 
 | # | Assumption | Revisit when |
