@@ -21,6 +21,17 @@ variable "github_repository" {
   }
 }
 
+variable "github_immutable_subject_prefix" {
+  description = "The OIDC subject prefix GitHub sends when the repository uses immutable subject claims: repo:<owner>@<owner-id>/<repo>@<repo-id>. Find it with: gh api repos/<owner>/<repo>/actions/oidc/customization/sub (field sub_claim_prefix). Empty string if the repository uses the plain repo:<owner>/<repo> form only."
+  type        = string
+  default     = "repo:Junebhone@86924620/SocialOps@1361594975"
+
+  validation {
+    condition     = var.github_immutable_subject_prefix == "" || can(regex("^repo:[^/]+@[0-9]+/[^/]+@[0-9]+$", var.github_immutable_subject_prefix))
+    error_message = "github_immutable_subject_prefix must look like repo:owner@123/name@456, or be empty."
+  }
+}
+
 variable "create_github_oidc_provider" {
   description = "An AWS account can hold only one OIDC provider for token.actions.githubusercontent.com. Set false if yours already has one and it will be looked up instead."
   type        = bool
