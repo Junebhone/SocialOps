@@ -26,10 +26,9 @@ services = {
 }
 
 # The full git SHA to deploy. CI pushes every merge to main under its SHA;
-# deploy a new build by changing this line in a PR. Placeholder: da25d3d… is
-# the last main commit from before CI existed and was never pushed, so it
-# plans fine but an apply would fail to pull. Replace it before applying.
-image_tag = "da25d3d30cf1faf89761022d2308bc0e8929b8a3"
+# deploy a new build by changing this line in a PR. 8d183a3 is the merge of
+# PR #4, the first build CI pushed to ECR.
+image_tag = "8d183a315eb18fff3e5745a40297c8e13b7dcf6d"
 
 # The config.py contract for models (tier -> model, D6). Ollama is the local
 # default and does not run on AWS, so AWS environments use Bedrock. Current
