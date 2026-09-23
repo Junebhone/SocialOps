@@ -170,13 +170,16 @@ jobs:
             const marker = `<!-- terraform-plan:${env} -->`;
 
             let plan = fs.readFileSync('plan.txt', 'utf8');
+            // Read the summary line before truncating: it is the last line of
+            // the plan, so a long plan loses it to the size limit below.
+            const summary = (plan.match(/^Plan: .*$/m) || ['Changes planned'])[0];
             const limit = 60000; // GitHub rejects comments over 65,536 characters
             if (plan.length > limit) {
-              plan = plan.slice(0, limit) + '\n\n... truncated. The full plan is in the workflow log.';
+              plan = plan.slice(0, limit) + `\n\n... truncated. ${summary} The full plan is in the workflow log.`;
             }
 
             const headline = {
-              'changes': (plan.match(/^Plan: .*$/m) || ['Changes planned'])[0],
+              'changes': summary,
               'no-changes': 'No changes. Infrastructure matches the configuration.',
               'failed': 'terraform plan failed',
             }[outcome];

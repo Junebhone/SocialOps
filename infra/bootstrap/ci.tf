@@ -29,6 +29,16 @@ locals {
   region      = data.aws_region.current.region
   github_host = "token.actions.githubusercontent.com"
 
+  # GitHub names the repository in the token's `sub` claim in one of two ways.
+  # The plain form is repo:owner/name. Repositories with immutable subject
+  # claims turned on (this one) send repo:owner@<id>/name@<id> instead, so a
+  # deleted repository recreated under the same name cannot inherit this
+  # trust. Both forms are accepted; the immutable one is what actually arrives.
+  github_subject_prefixes = compact([
+    "repo:${var.github_repository}",
+    var.github_immutable_subject_prefix,
+  ])
+
   github_oidc_provider_arn = (
     var.create_github_oidc_provider
     ? aws_iam_openid_connect_provider.github[0].arn
@@ -74,7 +84,7 @@ data "aws_iam_policy_document" "ci_plan_trust" {
     condition {
       test     = "StringEquals"
       variable = "${local.github_host}:sub"
-      values   = ["repo:${var.github_repository}:pull_request"]
+      values   = [for p in local.github_subject_prefixes : "${p}:pull_request"]
     }
   }
 }
@@ -167,7 +177,7 @@ data "aws_iam_policy_document" "ci_ecr_push_trust" {
     condition {
       test     = "StringEquals"
       variable = "${local.github_host}:sub"
-      values   = ["repo:${var.github_repository}:ref:refs/heads/main"]
+      values   = [for p in local.github_subject_prefixes : "${p}:ref:refs/heads/main"]
     }
   }
 }

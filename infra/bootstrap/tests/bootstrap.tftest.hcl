@@ -89,6 +89,16 @@ run "reuses_an_existing_github_oidc_provider" {
   }
 }
 
+run "rejects_a_malformed_immutable_subject_prefix" {
+  command = plan
+
+  variables {
+    github_immutable_subject_prefix = "repo:Junebhone/SocialOps"
+  }
+
+  expect_failures = [var.github_immutable_subject_prefix]
+}
+
 run "rejects_a_repository_that_is_not_owner_slash_name" {
   command = plan
 
