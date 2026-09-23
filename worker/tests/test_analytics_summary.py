@@ -126,7 +126,7 @@ async def test_the_model_is_given_the_sql_numbers(
     await run_analytics_summary(brand.id, db, period_end=WEEK_END)
 
     assert "comments triaged: 1" in prompts[0]
-    assert "average sentiment: +2.0" in prompts[0]
+    assert "average sentiment: +2.00" in prompts[0]
     assert "replies published: 0" in prompts[0]
 
 
