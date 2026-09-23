@@ -13,6 +13,22 @@ locals {
   replicated = var.num_cache_clusters > 1
 }
 
+# The default group evicts keys that have a TTL (volatile-lru) when memory runs
+# out, and arq stores every job's payload under a key with a TTL. Under memory
+# pressure, queued jobs would vanish without an error, which hard rule #7
+# forbids. With noeviction, a full Redis rejects the enqueue instead, so the
+# API returns an error and nothing is lost silently.
+resource "aws_elasticache_parameter_group" "this" {
+  name        = var.name
+  family      = var.parameter_group_family
+  description = "arq queue: never evict job keys"
+
+  parameter {
+    name  = "maxmemory-policy"
+    value = "noeviction"
+  }
+}
+
 resource "aws_elasticache_subnet_group" "this" {
   name       = var.name
   subnet_ids = var.subnet_ids
@@ -22,12 +38,9 @@ resource "aws_elasticache_replication_group" "this" {
   replication_group_id = var.name
   description          = "arq job queue for ${var.name}"
 
-  engine         = "redis"
-  engine_version = var.engine_version
-  # The default group is deliberate: arq needs no non-default Redis settings,
-  # and a custom group is one more resource to keep in step with the version.
-  # tflint-ignore: aws_elasticache_replication_group_default_parameter_group
-  parameter_group_name = var.parameter_group_name
+  engine               = "redis"
+  engine_version       = var.engine_version
+  parameter_group_name = aws_elasticache_parameter_group.this.name
   node_type            = var.node_type
   port                 = 6379
 

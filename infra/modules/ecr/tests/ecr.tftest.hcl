@@ -18,7 +18,10 @@ run "tags_are_immutable_and_images_scanned" {
   }
 
   assert {
-    condition     = length(jsondecode(aws_ecr_lifecycle_policy.this["socialops/api"].policy).rules) == 2
-    error_message = "Each repository should expire untagged images and cap tagged ones."
+    condition = alltrue([
+      for rule in jsondecode(aws_ecr_lifecycle_policy.this["socialops/api"].policy).rules :
+      rule.selection.tagStatus == "untagged"
+    ])
+    error_message = "Only untagged images may expire: a tagged SHA may be what an environment is pinned to."
   }
 }

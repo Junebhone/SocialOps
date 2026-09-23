@@ -5,14 +5,21 @@
 # no secret stored in GitHub to leak or rotate. The trust policies below are the
 # whole access-control story, so they are narrow on purpose:
 #
-#   ci-plan      pull requests from this repository only. Read-only across the
-#                account, plus the state lock. It can see everything and change
-#                nothing, which is what a plan needs.
+#   ci-plan      pull requests from this repository only. Reads infrastructure
+#                metadata and state, and cannot write anything, lock files
+#                included: CI plans are speculative and run with -lock=false.
+#                Application data (objects, items, messages, logs) is denied.
 #   ci-ecr-push  the main branch only. Push to the three ECR repositories and
 #                nothing else. A pull request cannot publish an image.
 #
 # Neither role can apply. Applying stays a deliberate act by a person with
 # their own credentials (infra/README.md).
+#
+# The trust boundary is "can push a branch to this repository". A pull request
+# can edit its own workflow, and the plan role must read Terraform state and
+# the DATABASE_URL secret to refresh them, so a collaborator can print the dev
+# and staging database passwords from CI. Keep write access to the team.
+# Fork PRs get no OIDC token and cannot assume either role.
 
 data "aws_partition" "current" {}
 data "aws_region" "current" {}
@@ -97,20 +104,6 @@ data "aws_iam_policy_document" "ci_plan_state" {
     resources = ["${aws_s3_bucket.state.arn}/*"]
   }
 
-  # A plan takes the state lock but never writes state. So the role can create
-  # and delete lock files (use_lockfile) and nothing else in the bucket.
-  statement {
-    sid       = "TakeS3Lock"
-    actions   = ["s3:PutObject", "s3:DeleteObject"]
-    resources = ["${aws_s3_bucket.state.arn}/*.tflock"]
-  }
-
-  statement {
-    sid       = "TakeDynamoDbLock"
-    actions   = ["dynamodb:DescribeTable", "dynamodb:GetItem", "dynamodb:PutItem", "dynamodb:DeleteItem"]
-    resources = [aws_dynamodb_table.lock.arn]
-  }
-
   # ReadOnlyAccess deliberately omits secret values. Refreshing the
   # DATABASE_URL secret version needs one, so it is granted for this
   # project's secrets only.
@@ -119,10 +112,37 @@ data "aws_iam_policy_document" "ci_plan_state" {
     actions   = ["secretsmanager:GetSecretValue"]
     resources = ["arn:${local.partition}:secretsmanager:${local.region}:${local.account_id}:secret:${var.project}/*"]
   }
+
+  # ReadOnlyAccess also reads data, not just configuration: every S3 object and
+  # DynamoDB item in the account, queued messages, and application logs. A
+  # plan needs none of it, and a pull request can change what its workflow
+  # runs. So data reads are denied everywhere except the state files
+  # themselves. An explicit Deny wins over the managed policy's Allow.
+  statement {
+    sid    = "DenyApplicationData"
+    effect = "Deny"
+    actions = [
+      "s3:GetObject*",
+      "dynamodb:GetItem",
+      "dynamodb:BatchGetItem",
+      "dynamodb:Query",
+      "dynamodb:Scan",
+      "sqs:ReceiveMessage",
+      "logs:GetLogEvents",
+      "logs:FilterLogEvents",
+      "logs:StartQuery",
+      "logs:StartLiveTail",
+      "rds:DownloadDBLogFilePortion",
+      "rds:DownloadCompleteDBLogFile",
+    ]
+    # Exempt: the state files, and the lock table, whose "<key>-md5" item the
+    # S3 backend reads to check state integrity every time it loads state.
+    not_resources = ["${aws_s3_bucket.state.arn}/*", aws_dynamodb_table.lock.arn]
+  }
 }
 
 resource "aws_iam_role_policy" "ci_plan_state" {
-  name   = "terraform-state-and-lock"
+  name   = "terraform-state-read-no-data"
   role   = aws_iam_role.ci_plan.id
   policy = data.aws_iam_policy_document.ci_plan_state.json
 }

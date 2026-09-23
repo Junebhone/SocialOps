@@ -135,7 +135,10 @@ jobs:
         id: plan
         run: |
           set +e
-          terraform -chdir=infra/stack plan -no-color -lock-timeout=5m -detailed-exitcode \
+          # -lock=false: a PR plan is speculative, is never applied, and writes
+          # nothing. Taking the lock would need write access to the state
+          # bucket, and a cancelled run would leave a stale lock behind.
+          terraform -chdir=infra/stack plan -no-color -lock=false -detailed-exitcode \
             -var-file="env/$TF_ENV.tfvars" -out=tfplan > plan.log 2>&1
           code=$?
           set -e

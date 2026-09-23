@@ -24,8 +24,9 @@ precondition on the first data source, so a mismatched pair stops before
 anything is read. The `default` workspace is refused.
 
 **Plan in CI, apply by hand.** GitHub Actions authenticates with OIDC. The
-plan role is read-only apart from the lock files, and the push role can only
-push to ECR from `main`. No workflow can apply.
+plan role writes nothing: CI plans are speculative, run with `-lock=false`,
+and are denied application data. The push role can only push to ECR from
+`main`. No workflow can apply.
 
 **Promote an image, never rebuild it.** CI pushes each merge to `main` once,
 tagged with the full commit SHA, into immutable ECR repositories. An
@@ -77,8 +78,17 @@ Smaller choices, each explained next to the code:
   staging about $12 (`infra/README.md`).
 - **Applying today proves infrastructure, not a running app.** `S3Storage`,
   the Bedrock `case` in `worker/llm.py`, and an SQS consumer are app changes
-  for later modules. Until they land, the tasks fail config validation at
-  start, loudly and on purpose.
+  for later modules. Until they land, the api and worker fail config
+  validation at start, loudly and on purpose. The migrate task never touches
+  storage, is given `STORAGE_BACKEND=local`, and runs today, which proves the
+  network path and the secret.
+- **Write access to the repository is access to the database passwords.** A
+  pull request can edit its own workflow, and planning requires reading state
+  and the `DATABASE_URL` secret. For a small team this is accepted and
+  documented, not engineered away. A plan gated behind a protected GitHub
+  environment is the upgrade if that changes.
+- **ECR keeps every tagged image.** A count-based expiry would eventually
+  delete the SHA staging is pinned to. Old tags are removed by hand.
 - **Promoting to staging is a one-line PR with a plan comment.** This is
   also the seam a later module automates.
 - **CI's plan jobs need a one-time human step.** Someone applies bootstrap and

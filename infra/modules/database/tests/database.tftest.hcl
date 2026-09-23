@@ -44,8 +44,8 @@ run "protected_database" {
   }
 
   assert {
-    condition     = aws_db_instance.this.final_snapshot_identifier == "test-final"
-    error_message = "A protected database must take a final snapshot on destroy."
+    condition     = startswith(aws_db_instance.this.final_snapshot_identifier, "test-final-")
+    error_message = "A protected database must take a final snapshot on destroy, under a name unique to this instance."
   }
 }
 

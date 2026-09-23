@@ -20,6 +20,17 @@ resource "random_password" "master" {
   special = false
 }
 
+# Suffix for the final snapshot, fixed for the life of the instance. A fixed
+# name like "<name>-final" makes the second destroy of an environment fail with
+# DBSnapshotAlreadyExists. timestamp() would change on every plan.
+resource "random_id" "final_snapshot" {
+  byte_length = 4
+
+  keepers = {
+    identifier = var.name
+  }
+}
+
 resource "aws_db_subnet_group" "this" {
   name       = var.name
   subnet_ids = var.subnet_ids
@@ -56,7 +67,7 @@ resource "aws_db_instance" "this" {
 
   deletion_protection       = var.deletion_protection
   skip_final_snapshot       = var.skip_final_snapshot
-  final_snapshot_identifier = var.skip_final_snapshot ? null : "${var.name}-final"
+  final_snapshot_identifier = var.skip_final_snapshot ? null : "${var.name}-final-${random_id.final_snapshot.hex}"
 
   apply_immediately = var.apply_immediately
 

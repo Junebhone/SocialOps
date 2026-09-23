@@ -954,9 +954,12 @@ CI with no AWS account. The app is re-platformed, not re-architected (D2).
 Every compose service maps onto a managed one, and the only env values that
 change are the ones D2 predicted.
 
-**Consequence.** Applying proves the infrastructure but does not yet run the
-app. `STORAGE_BACKEND=s3` and `LLM_PROVIDER=bedrock` need `S3Storage` and one
-`case` in `worker/llm.py`, both app changes for a later module. Full reasoning
+**Consequence.** Applying proves the infrastructure and the database path,
+because the migrate task runs, but does not yet run the app.
+`STORAGE_BACKEND=s3` and `LLM_PROVIDER=bedrock` need `S3Storage` and one
+`case` in `worker/llm.py`, both app changes for a later module. Anyone who can
+push a branch can read the database passwords through a plan, and that is the
+stated trust boundary. Full reasoning
 and alternatives are in [ADR-0006](decisions/0006-terraform-layout-and-ci.md).
 The runbook is [infra/README.md](../infra/README.md).
 

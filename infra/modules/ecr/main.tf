@@ -6,6 +6,12 @@
 #
 # IMMUTABLE tags: a git SHA can only ever point at one image. A plan that says
 # "deploy abc123" then means the same bytes in dev and in staging.
+#
+# Tagged images are never expired automatically. ECR cannot know which SHA an
+# environment's tfvars pins, so a count-based rule would eventually delete the
+# image staging runs. Its next task replacement or rollback would then fail to
+# pull. Old tags are deleted by hand once no tfvars file references them
+# (infra/README.md, "What it costs").
 
 resource "aws_ecr_repository" "this" {
   for_each = var.repository_names
@@ -37,16 +43,6 @@ resource "aws_ecr_lifecycle_policy" "this" {
           countType   = "sinceImagePushed"
           countUnit   = "days"
           countNumber = var.untagged_expiry_days
-        }
-        action = { type = "expire" }
-      },
-      {
-        rulePriority = 2
-        description  = "Keep the newest ${var.keep_tagged_images} tagged images"
-        selection = {
-          tagStatus   = "any"
-          countType   = "imageCountMoreThan"
-          countNumber = var.keep_tagged_images
         }
         action = { type = "expire" }
       },

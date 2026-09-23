@@ -13,7 +13,9 @@
 # (see the guard in main.tf), so nothing is ever written to the bare key.
 terraform {
   backend "s3" {
-    key                  = "socialops/terraform.tfstate"
+    key = "socialops/terraform.tfstate"
+    # The state bucket's region: infra/bootstrap's aws_region. Moving to
+    # another region means changing it there, here, and in env/*.tfvars.
     region               = "us-east-1"
     workspace_key_prefix = "env"
     encrypt              = true

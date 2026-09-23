@@ -27,7 +27,17 @@ services = {
 }
 
 # Promote a build by copying the SHA dev has been running into this line.
+# Placeholder until CI has pushed a build: see the note in env/dev.tfvars.
 image_tag = "da25d3d30cf1faf89761022d2308bc0e8929b8a3"
+
+# The config.py contract for models (tier -> model, D6). Ollama is the local
+# default and does not run on AWS, so AWS environments use Bedrock. Current
+# Claude models on Bedrock are called through a cross-region inference profile,
+# hence the us. prefix; the worker role allows both profiles and base models.
+llm_provider     = "bedrock"
+llm_model_fast   = "us.anthropic.claude-haiku-4-5-20251001-v1:0"
+llm_model_text   = "us.anthropic.claude-sonnet-5-v1:0"
+llm_model_vision = "us.anthropic.claude-sonnet-5-v1:0"
 
 log_retention_days = 30
 container_insights = true

@@ -79,6 +79,14 @@ run "database_url_is_a_secret_not_an_env_var" {
     condition     = jsondecode(aws_ecs_task_definition.migrate.container_definitions)[0].command == ["alembic", "upgrade", "head"]
     error_message = "The migrate task should run Alembic and nothing else."
   }
+
+  assert {
+    condition = contains(
+      jsondecode(aws_ecs_task_definition.migrate.container_definitions)[0].environment,
+      { name = "STORAGE_BACKEND", value = "local" },
+    )
+    error_message = "Migrations never touch storage; the migrate task must pass config.py's validation today."
+  }
 }
 
 run "api_runs_without_reload" {

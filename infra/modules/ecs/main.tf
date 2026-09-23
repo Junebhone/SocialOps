@@ -32,6 +32,16 @@ locals {
 
   app_secrets = [{ name = "DATABASE_URL", valueFrom = var.database_url_secret_arn }]
 
+  # Alembic's env.py imports config.py, which validates every variable, and
+  # Phase 1's config accepts only STORAGE_BACKEND=local. Migrations never touch
+  # storage, so the migrate task is given the backend that exists today. That
+  # lets it run, and prove the network path and DATABASE_URL secret, before
+  # S3Storage lands. Once it does, "local" stays valid here.
+  migrate_env = [
+    for k, v in merge(var.app_environment, { STORAGE_BACKEND = "local", STORAGE_ROOT = "/tmp/unused" }) :
+    { name = k, value = v }
+  ]
+
   log_services = toset(["api", "worker", "web", "migrate"])
 
   log_config = {
@@ -132,8 +142,10 @@ resource "aws_ecs_task_definition" "worker" {
     environment      = local.app_env
     secrets          = local.app_secrets
     logConfiguration = local.log_config["worker"]
-    # Fargate's maximum. arq finishes the job in hand on SIGTERM, and a
-    # comment job is two model calls; this is the most time ECS will give it.
+    # Fargate's maximum, and still shorter than arq's 300s job_timeout. On a
+    # deploy, a job still running after 120s is killed. arq retries it
+    # (max_tries), and the orchestrator's row-lock guard (D29) makes the retry
+    # produce one draft, not two.
     stopTimeout = 120
 
     # arq writes a heartbeat to Redis and --check fails when it goes stale.
@@ -205,7 +217,7 @@ resource "aws_ecs_task_definition" "migrate" {
     image            = var.images.api
     essential        = true
     command          = ["alembic", "upgrade", "head"]
-    environment      = local.app_env
+    environment      = local.migrate_env
     secrets          = local.app_secrets
     logConfiguration = local.log_config["migrate"]
   }])

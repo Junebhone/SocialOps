@@ -35,7 +35,7 @@ variable "allowed_account_ids" {
 }
 
 variable "disposable" {
-  description = "true where the data can be thrown away (dev): destroy skips the final DB snapshot, empties the uploads bucket, deletes secrets immediately, and turns deletion protection off."
+  description = "true where the data can be thrown away (dev): destroy skips the final DB snapshot, empties the uploads bucket, deletes secrets immediately, and turns deletion protection off on RDS and the ALB."
   type        = bool
 }
 
@@ -130,9 +130,8 @@ variable "container_insights" {
 # --- LLM (the config.py contract) --------------------------------------------
 
 variable "llm_provider" {
-  description = "LLM_PROVIDER. Validated against the same allowlist as config.py (D21)."
+  description = "LLM_PROVIDER, set per environment in env/*.tfvars. No default, for the same reason CLAUDE.md forbids hardcoding a provider. Validated against config.py's allowlist (D21)."
   type        = string
-  default     = "bedrock"
 
   validation {
     condition     = contains(["ollama", "bedrock"], var.llm_provider)
@@ -141,21 +140,18 @@ variable "llm_provider" {
 }
 
 variable "llm_model_fast" {
-  description = "LLM_MODEL_FAST: the triage tier."
+  description = "LLM_MODEL_FAST: the triage tier. On Bedrock, current Claude models are invoked through a cross-region inference profile ID (us.anthropic...), not the bare model ID."
   type        = string
-  default     = "anthropic.claude-haiku-4-5-20251001-v1:0"
 }
 
 variable "llm_model_text" {
   description = "LLM_MODEL_TEXT: the response and content tier."
   type        = string
-  default     = "anthropic.claude-sonnet-5-v1:0"
 }
 
 variable "llm_model_vision" {
   description = "LLM_MODEL_VISION: the media tier."
   type        = string
-  default     = "anthropic.claude-sonnet-5-v1:0"
 }
 
 variable "ollama_base_url" {

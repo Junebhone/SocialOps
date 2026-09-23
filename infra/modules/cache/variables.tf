@@ -24,10 +24,10 @@ variable "engine_version" {
   default     = "7.1"
 }
 
-variable "parameter_group_name" {
-  description = "Parameter group matching engine_version."
+variable "parameter_group_family" {
+  description = "Parameter group family matching engine_version."
   type        = string
-  default     = "default.redis7"
+  default     = "redis7"
 }
 
 variable "node_type" {

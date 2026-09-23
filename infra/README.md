@@ -186,6 +186,10 @@ Commit that `backend.tf` so teammates find the state too.
 
 ### 2. Point the stack at the state bucket (once per clone)
 
+Everything here is in `us-east-1`. The region is set in three places:
+bootstrap's `aws_region`, `infra/stack/backend.tf`, and each `env/*.tfvars`.
+Moving region means changing all three.
+
 The bucket is named after the account, so anyone with credentials for it can
 derive the name. No need to ask whoever ran bootstrap:
 
@@ -227,7 +231,9 @@ request gets a plan comment per environment.
    ```
 
 4. Create the schema. ECS runs Alembic once, as a one-off task, using the api
-   image:
+   image. This works today, before the gaps below are closed. It is also the
+   quickest proof that the private subnets, the security groups and the
+   `DATABASE_URL` secret all work together:
 
    ```bash
    eval "$(terraform -chdir=infra/stack output -raw migrate_command)"
@@ -239,10 +245,11 @@ request gets a plan comment per environment.
    terraform -chdir=infra/stack output web_url
    ```
 
-**Read [Known gaps](#known-gaps) before step 4.** Until `S3Storage` and the
-Bedrock branch of `worker/llm.py` exist, the api and worker tasks refuse to
-start on AWS: config validation rejects `STORAGE_BACKEND=s3`. Applying today
-proves the infrastructure, not a running app.
+**Read [Known gaps](#known-gaps) before step 4.** Until `S3Storage` exists,
+the api and worker services refuse to start on AWS, because config validation
+rejects `STORAGE_BACKEND=s3`. The migrate task is the exception: it never
+touches storage and is given `local`. Applying today proves the
+infrastructure and the database path, not a running app.
 
 ### 5. Promote to staging
 
@@ -261,8 +268,11 @@ terraform -chdir=infra/stack workspace select dev
 terraform -chdir=infra/stack destroy -var-file=env/dev.tfvars
 ```
 
-Staging has deletion protection on RDS. To remove it on purpose, set
-`disposable = true` in `env/staging.tfvars`, apply, then destroy the same way.
+Staging has deletion protection on RDS and the ALB. To remove it on purpose,
+set `disposable = true` in `env/staging.tfvars`, apply, then destroy the same
+way. A protected database takes a final snapshot on destroy, named
+`socialops-staging-final-<random>` so a second teardown does not collide with
+the first.
 
 Bootstrap is protected twice: `prevent_destroy` on the state bucket and lock
 table, and deletion protection on the table. Destroy it last, only after every
@@ -277,7 +287,7 @@ names an environment.
 
 | Setting | dev | staging |
 |---|---|---|
-| `disposable` (no final snapshot, bucket emptied on destroy, no deletion protection) | `true` | `false` |
+| `disposable` (no final snapshot, bucket emptied on destroy, no deletion protection on RDS or the ALB) | `true` | `false` |
 | VPC | `10.10.0.0/16` | `10.20.0.0/16` |
 | NAT gateways | 1 shared | 1 per AZ |
 | RDS | `db.t4g.micro`, single-AZ, 1-day backups | `db.t4g.small`, Multi-AZ, 7-day backups |
@@ -314,19 +324,27 @@ is refused as well, because no environment is called `default`.
 Until step 1 is done, the plan jobs pass with a "skipped" notice, and image
 builds run but do not push. Nothing fails just because AWS is not set up yet.
 
-Four things worth knowing:
+Five things worth knowing:
 
-- **Nothing in CI can apply.** The plan role is read-only apart from the
-  state lock files. The push role can only push to the three repositories,
-  and only from `main`.
+- **Nothing in CI can apply.** The plan role cannot write anything, lock files
+  included. It reads infrastructure configuration and state, and is explicitly
+  denied application data: S3 objects, DynamoDB items, queued messages and
+  logs. The push role can only push to the three repositories, and only from
+  `main`.
+- **Anyone who can push a branch here can read the database passwords.** A
+  pull request can change its own workflow, and a plan has to read Terraform
+  state and the `DATABASE_URL` secret, both of which hold the password. Treat
+  write access to this repository as access to dev and staging data.
 - **Pull requests from forks get no plan.** GitHub gives fork PRs neither an
   OIDC token nor repository variables. Teammates push branches to this
   repository instead.
 - **The repository is public, so plan comments are public.** The account ID
   is replaced with `<account-id>` before posting. Resource names and CIDRs are
   still visible.
-- **A plan waits for a lock.** Two PRs planning at once queue for up to five
-  minutes (`-lock-timeout=5m`) rather than failing.
+- **CI plans do not lock.** They run with `-lock=false`, because a pull
+  request plan is speculative and never applied. A cancelled run therefore
+  cannot leave a stale lock behind. Plans and applies run by people still
+  lock.
 
 ---
 
@@ -348,15 +366,21 @@ Bedrock is billed per token on top. `terraform plan`, `make tf-check` and CI
 cost nothing. Bootstrap costs cents: S3, on-demand DynamoDB, and ECR storage.
 Destroy an applied environment when you are done with it.
 
+ECR keeps every tagged build, because it cannot know which SHA an
+environment's tfvars pins, and expiring the one staging runs would break its
+next deploy or rollback. Storage is about $0.10 per GB-month. Delete old tags
+by hand once no `env/*.tfvars` references them. Untagged layers expire on
+their own after seven days.
+
 ## Known gaps
 
 These are left for later modules on purpose. Each needs app code, not
 infrastructure.
 
-- **`S3Storage` does not exist yet.** The task definitions set
-  `STORAGE_BACKEND=s3`, and `config.py` accepts only `local`, so the api and
-  worker fail at start, loudly and on purpose. It needs one `StorageBackend`
-  subclass (D25).
+- **`S3Storage` does not exist yet.** The api and worker task definitions set
+  `STORAGE_BACKEND=s3`, and `config.py` accepts only `local`, so both fail at
+  start, loudly and on purpose. It needs one `StorageBackend` subclass (D25).
+  The migrate task is given `local` and runs today.
 - **`LLM_PROVIDER=bedrock` raises `NotImplementedError`** in
   `worker/llm.py::_build_model`. It needs one `case`, as the README's
   *Switching LLM provider* section describes.
@@ -384,7 +408,7 @@ infrastructure.
 |---|---|
 | `Warning: Deprecated Parameter … dynamodb_table` | Expected. The brief asks for a DynamoDB lock table; Terraform 1.16 prefers `use_lockfile`, and both are on. |
 | `Workspace "x" does not match environment "y"` | The workspace guard. Use `make tf-plan ENV=y`. |
-| `Error acquiring the state lock` | Someone else is planning or applying. CI waits five minutes. Locally, add `-lock-timeout=5m` or wait. |
+| `Error acquiring the state lock` | Someone else is applying, or a local run was killed mid-plan. Wait, or add `-lock-timeout=5m`. For a lock you know is stale: `terraform -chdir=infra/stack force-unlock <ID>`. CI plans never lock. |
 | `RepositoryNotFoundException` for `socialops/api` during plan | Bootstrap has not been applied in this account (step 1). |
 | Apply succeeds, then tasks stop with `CannotPullContainerError` | `image_tag` names a commit CI never pushed. ECS does not check the tag when registering a task definition. Only merges to `main` are pushed. |
 | Plan job says "skipped" | The repository variables from step 1 are not set. |

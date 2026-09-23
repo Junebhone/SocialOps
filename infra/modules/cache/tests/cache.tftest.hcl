@@ -23,6 +23,11 @@ run "single_node_has_no_failover" {
     condition     = aws_elasticache_replication_group.this.transit_encryption_enabled == true
     error_message = "Redis must require TLS in every environment."
   }
+
+  assert {
+    condition     = one(aws_elasticache_parameter_group.this.parameter).value == "noeviction"
+    error_message = "arq job keys carry TTLs; any eviction policy but noeviction can drop queued jobs silently."
+  }
 }
 
 run "replicas_fail_over_across_azs" {

@@ -104,6 +104,20 @@ jobs:
         id: ecr
         uses: aws-actions/amazon-ecr-login@03f1aad4c6c7ffd436567f42f9384779290529bd # v2.1.7
 
+      # ECR tags are immutable, so pushing a SHA that is already there fails.
+      # That happens when a partly failed run on main is re-run.
+      - name: Already pushed?
+        if: env.PUSH == 'true'
+        id: exists
+        run: |
+          if aws ecr describe-images --repository-name "$ECR_REPOSITORY_PREFIX/${{ matrix.service }}" \
+               --image-ids imageTag=${{ github.sha }} >/dev/null 2>&1; then
+            echo "pushed=true" >> "$GITHUB_OUTPUT"
+            echo "\`$ECR_REPOSITORY_PREFIX/${{ matrix.service }}:${{ github.sha }}\` is already in ECR; skipping the build." >> "$GITHUB_STEP_SUMMARY"
+          else
+            echo "pushed=false" >> "$GITHUB_OUTPUT"
+          fi
+
       - name: Image name
         id: image
         run: |
@@ -117,6 +131,7 @@ jobs:
       # immutable, so this tag can only ever mean this commit, and
       # infra/stack/env/*.tfvars pins exactly this value.
       - name: Build${{ env.PUSH == 'true' && ' and push' || '' }}
+        if: steps.exists.outputs.pushed != 'true'
         uses: docker/build-push-action@c3c9e263c25d99ce0380d002d59b67737d91b0dc # v7.4.0
         with:
           context: ${{ matrix.context }}
@@ -128,6 +143,7 @@ jobs:
           cache-to: type=gha,mode=max,scope=${{ matrix.service }}
 
       - name: Summary
+        if: steps.exists.outputs.pushed != 'true'
         run: |
           if [ "$PUSH" = "true" ]; then
             {
