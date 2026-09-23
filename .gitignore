@@ -13,3 +13,23 @@ node_modules/
 out/
 *.log
 .DS_Store
+
+# Terraform. State never lives in git: it holds the database password and is
+# kept in the encrypted S3 backend (infra/bootstrap). Lock files ARE committed,
+# but only for the two roots; child modules inherit their caller's lock.
+.terraform/
+*.tfstate
+*.tfstate.*
+*.tfplan
+tfplan
+crash.log
+crash.*.log
+override.tf
+override.tf.json
+*_override.tf
+*_override.tf.json
+infra/modules/**/.terraform.lock.hcl
+# The storage/ rule above is for the local upload volume and its compose mount
+# points (./storage, api/storage, worker/storage). Without this line it also
+# swallows the S3 module, and git add skips it without a word.
+!infra/modules/storage/
