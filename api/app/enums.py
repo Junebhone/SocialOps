@@ -34,7 +34,9 @@ ContentDraftStatus = Literal["pending", "approved", "rejected"]
 # page same as always.
 ContentIdeaStatus = Literal["proposed", "approved", "rejected"]
 
-AgentName = Literal["triage", "response", "content", "media", "ideation", "insight"]
+AgentName = Literal[
+    "triage", "response", "content", "media", "ideation", "insight", "analytics"
+]
 AgentRunStatus = Literal["ok", "error"]
 
 # D7: entity_type is deliberately NOT constrained at the database. This alias is

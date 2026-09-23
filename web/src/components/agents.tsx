@@ -17,7 +17,15 @@ import {
 } from "@/lib/api";
 import { cn } from "@/lib/utils";
 
-const AGENTS: AgentName[] = ["triage", "response", "content", "media", "ideation", "insight"];
+const AGENTS: AgentName[] = [
+  "triage",
+  "response",
+  "content",
+  "media",
+  "ideation",
+  "insight",
+  "analytics",
+];
 
 // worker/config.py's tier map, restated here for the reader — agents never
 // name a model (hard rule #3), but the sidebar and this page both show which
@@ -29,6 +37,7 @@ const TIER: Record<AgentName, string> = {
   media: "vision",
   ideation: "standard",
   insight: "standard",
+  analytics: "fast",
 };
 
 /**

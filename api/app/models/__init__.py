@@ -6,6 +6,7 @@ autogenerate compare a half-empty MetaData against a populated database and emit
 a DROP TABLE for the tables it cannot see.
 """
 
+from app.models.analytics import AnalyticsSummary
 from app.models.asset import Asset, ContentDraft
 from app.models.base import Base
 from app.models.brand import Brand, PlatformAccount
@@ -17,6 +18,7 @@ from app.models.post import Comment, Post
 
 __all__ = [
     "AgentRun",
+    "AnalyticsSummary",
     "Asset",
     "Base",
     "Brand",

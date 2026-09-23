@@ -28,6 +28,7 @@ class BrandCreate(CreateModel):
     name: str = Field(min_length=1, max_length=120)
     voice_guidelines: str
     brand_rules_json: BrandRules
+    timezone: str = Field(default="UTC", max_length=64)
 
 
 class BrandRead(ORMModel):
@@ -35,3 +36,4 @@ class BrandRead(ORMModel):
     name: str
     voice_guidelines: str
     brand_rules_json: BrandRules
+    timezone: str

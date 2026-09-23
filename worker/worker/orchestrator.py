@@ -27,13 +27,15 @@ from __future__ import annotations
 import asyncio
 import json
 from dataclasses import dataclass, field
-from datetime import UTC, datetime
+from datetime import UTC, date, datetime, timedelta
 from pathlib import Path
 from typing import Protocol
 
 import structlog
+from app.analytics_queries import compute_analytics, today_in
 from app.models import (
     AgentRun,
+    AnalyticsSummary,
     Asset,
     Brand,
     Comment,
@@ -44,11 +46,13 @@ from app.models import (
     Post,
     ReplyDraft,
 )
+from app.schemas.analytics import AnalyticsRead
 from pydantic import BaseModel
 from pydantic_graph import BaseNode, End, GraphBuilder, GraphRunContext
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
+from worker.agents.analytics import AnalyticsAgent
 from worker.agents.base import BaseAgent
 from worker.agents.content import ContentAgent
 from worker.agents.ideation import IdeationAgent
@@ -56,6 +60,7 @@ from worker.agents.insight import InsightAgent
 from worker.agents.media import MediaAgent
 from worker.agents.response import ResponseAgent
 from worker.agents.schemas import (
+    AnalyticsInput,
     ContentInput,
     IdeationInput,
     InsightInput,
@@ -879,6 +884,138 @@ async def run_insight(
     return state
 
 
+# --- analytics: the weekly summary --------------------------------------------
+
+SUMMARY_DAYS = 7
+
+# Written without a model when a week has no triaged comments: asking a model
+# to describe nothing invites it to invent something.
+QUIET_WEEK = "No customer comments were triaged in this period."
+
+
+@dataclass
+class AnalyticsState:
+    """Same shape as `InsightState`: one agent call, no branching, no graph."""
+
+    brand_id: int
+    session: AsyncSession
+    audit_factory: async_sessionmaker[AsyncSession] | None = None
+
+    agents_run: list[str] = field(default_factory=list)
+
+    @property
+    def entity_type(self) -> str:
+        return "brand"
+
+    @property
+    def entity_id(self) -> int:
+        return self.brand_id
+
+
+def _signed(value: float) -> str:
+    return f"{value:+.2f}"
+
+
+def _duration(seconds: float | None) -> str:
+    if seconds is None:
+        return "none"
+    if seconds < 3600:
+        return f"{round(seconds / 60)} min"
+    if seconds < 86_400:
+        return f"{seconds / 3600:.1f} h"
+    return f"{seconds / 86_400:.1f} days"
+
+
+def summary_stats(data: AnalyticsRead) -> dict[str, object]:
+    """The week's figures, flattened. Stored as `stats_json` and shown to the
+    model, so the text on the page can always be checked against its inputs."""
+    triaged = sum(p.comments for p in data.sentiment)
+    weighted = sum(p.avg_sentiment * p.comments for p in data.sentiment)
+    by_category: dict[str, int] = {}
+    for point in data.categories:
+        by_category[point.category] = by_category.get(point.category, 0) + point.comments
+    rt = data.response_times
+    return {
+        "comments_triaged": triaged,
+        "average_sentiment": round(weighted / triaged, 2) if triaged else None,
+        "by_category": dict(sorted(by_category.items(), key=lambda kv: (-kv[1], kv[0]))),
+        "replies_published": rt.published,
+        "median_seconds_to_reply": rt.p50_seconds,
+        "p95_seconds_to_reply": rt.p95_seconds,
+    }
+
+
+def _stats_text(stats: dict[str, object]) -> str:
+    """Short labelled lines, the shape `prompts/analytics.md` shows the model."""
+    avg = stats["average_sentiment"]
+    by_category = stats["by_category"]
+    assert isinstance(by_category, dict)
+    median = stats["median_seconds_to_reply"]
+    p95 = stats["p95_seconds_to_reply"]
+    return "\n".join(
+        [
+            f"comments triaged: {stats['comments_triaged']}",
+            f"average sentiment: {_signed(avg) if isinstance(avg, float) else 'none'}",
+            "by category: " + ", ".join(f"{k} {v}" for k, v in by_category.items()),
+            f"replies published: {stats['replies_published']}",
+            f"median time to reply: {_duration(median if isinstance(median, float) else None)}",
+            f"95% of replies within: {_duration(p95 if isinstance(p95, float) else None)}",
+        ]
+    )
+
+
+async def run_analytics_summary(
+    brand_id: int,
+    session: AsyncSession,
+    audit_factory: async_sessionmaker[AsyncSession] | None = None,
+    period_end: date | None = None,
+) -> AnalyticsState:
+    """The analytics entry point: one brand, seven days ending `period_end`.
+
+    `period_end` defaults to today in the brand's time zone (a "Generate
+    summary" click). The Monday schedule passes the Sunday that just ended.
+    The numbers come from `compute_analytics`, the same function behind the
+    dashboard (ADR-0005), so the summary and the charts cannot disagree.
+    """
+    state = AnalyticsState(brand_id=brand_id, session=session, audit_factory=audit_factory)
+
+    brand = await session.get(Brand, brand_id)
+    if brand is None:
+        raise LookupError(f"brand {brand_id} not found")
+
+    end = period_end or await today_in(session, brand.timezone)
+    start = end - timedelta(days=SUMMARY_DAYS - 1)
+    stats = summary_stats(await compute_analytics(session, brand_id, brand.timezone, start, end))
+
+    if not stats["comments_triaged"]:
+        text, run_id = QUIET_WEEK, None
+    else:
+        output, run_id = await _run_agent(
+            state,
+            "analytics",
+            AnalyticsAgent(),
+            AnalyticsInput(
+                brand_name=brand.name,
+                period=f"{start.isoformat()} to {end.isoformat()}",
+                stats=_stats_text(stats),
+            ),
+        )
+        text = output.summary
+
+    session.add(
+        AnalyticsSummary(
+            brand_id=brand_id,
+            period_start=start,
+            period_end=end,
+            text=text,
+            stats_json=stats,
+            agent_run_id=run_id,
+        )
+    )
+    await session.flush()
+    return state
+
+
 def mermaid() -> str:
     """Step 10's comment diagram, generated from the definition rather than drawn."""
     return comment_graph.render(title="Comment pipeline", direction="LR")  # type: ignore[attr-defined]
@@ -891,6 +1028,7 @@ def mermaid_asset() -> str:
 
 __all__ = [
     "UTC",
+    "AnalyticsState",
     "AssetState",
     "CommentState",
     "IdeationState",
@@ -900,6 +1038,7 @@ __all__ = [
     "datetime",
     "mermaid",
     "mermaid_asset",
+    "run_analytics_summary",
     "run_asset",
     "run_comment",
     "run_ideation",

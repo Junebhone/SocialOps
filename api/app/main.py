@@ -25,6 +25,7 @@ from app.db import SessionDep, create_engine_and_sessionmaker
 from app.logging import configure_logging, request_id_middleware
 from app.routers import (
     agent_runs,
+    analytics,
     assets,
     brands,
     comments,
@@ -88,6 +89,7 @@ app.include_router(assets.router)
 app.include_router(content_drafts.router)
 app.include_router(content_ideas.router)
 app.include_router(insights.router)
+app.include_router(analytics.router)
 app.include_router(agent_runs.router)
 app.include_router(failed_jobs.router)
 

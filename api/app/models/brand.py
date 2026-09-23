@@ -22,6 +22,10 @@ class Brand(Base):
     # BrandRules schema at the API boundary.
     brand_rules_json: Mapped[dict[str, Any]] = mapped_column(JSONB)
 
+    # ADR-0005: analytics buckets days in the brand's own time zone. An IANA
+    # name such as "America/Chicago"; existing rows default to UTC.
+    timezone: Mapped[str] = mapped_column(String(64), server_default="UTC")
+
 
 class PlatformAccount(Base):
     __tablename__ = "platform_accounts"

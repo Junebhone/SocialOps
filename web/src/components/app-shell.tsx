@@ -12,6 +12,7 @@ const NAV = [
   { href: "/content", label: "Content", icon: NavContent },
   { href: "/ideas", label: "Ideas", icon: NavIdeas },
   { href: "/insights", label: "Insights", icon: NavInsights },
+  { href: "/analytics", label: "Analytics", icon: NavAnalytics },
   { href: "/agents", label: "Agents", icon: NavAgents },
 ];
 
@@ -27,7 +28,15 @@ const PIPELINES = [
 // `agent_runs` totals only return rows for agents that have actually been
 // invoked, which used to mean this section was empty (or missing agents) on
 // a fresh brand; a sidebar that only sometimes has content reads as broken.
-const ALL_AGENTS = ["triage", "response", "content", "media", "ideation", "insight"] as const;
+const ALL_AGENTS = [
+  "triage",
+  "response",
+  "content",
+  "media",
+  "ideation",
+  "insight",
+  "analytics",
+] as const;
 
 // One color per brand so the sidebar dot and dropdown stay legible with more
 // than one brand seeded — cycles through the existing status/accent tokens
@@ -398,6 +407,14 @@ function NavInsights({ className }: { className?: string }) {
   return (
     <svg className={className} viewBox="0 0 18 18" {...iconProps()}>
       <path d="M3 14V8M7 14V4M11 14v-7M15 14v-3" />
+    </svg>
+  );
+}
+function NavAnalytics({ className }: { className?: string }) {
+  return (
+    <svg className={className} viewBox="0 0 18 18" {...iconProps()}>
+      <path d="M2.5 14.5h13" />
+      <path d="M3.5 11l3.5-3.5 3 2.5 4.5-5" />
     </svg>
   );
 }

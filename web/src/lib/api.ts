@@ -130,7 +130,7 @@ export interface GenerateInsightsResult {
   enqueued: boolean;
 }
 
-export type AgentName = "triage" | "response" | "content" | "media" | "ideation" | "insight";
+export type AgentName = "triage" | "response" | "content" | "media" | "ideation" | "insight" | "analytics";
 export type AgentRunStatus = "ok" | "error";
 
 export interface AgentRun {
@@ -195,6 +195,49 @@ export interface AgentRunFilters {
   status?: AgentRunStatus;
   entity_type?: string;
   entity_id?: number;
+}
+
+/** GET /analytics (ADR-0005). Every number is SQL, never a model; days are the brand's days. */
+export interface SentimentPoint {
+  day: string;
+  avg_sentiment: number;
+  comments: number;
+}
+
+export interface CategoryPoint {
+  day: string;
+  category: Category;
+  comments: number;
+}
+
+export interface ResponseTimes {
+  published: number;
+  p50_seconds: number | null;
+  p95_seconds: number | null;
+  histogram: { label: string; comments: number }[];
+}
+
+/** The analytics agent's weekly summary. `stats_json` is exactly what it was given. */
+export interface AnalyticsSummary {
+  id: number;
+  brand_id: number;
+  period_start: string;
+  period_end: string;
+  text: string;
+  stats_json: Record<string, unknown>;
+  // null for a quiet week: no model ran, the sentence is fixed text.
+  agent_run_id: number | null;
+  created_at: string;
+}
+
+export interface Analytics {
+  brand_id: number;
+  timezone: string;
+  start: string;
+  end: string;
+  sentiment: SentimentPoint[];
+  categories: CategoryPoint[];
+  response_times: ResponseTimes;
 }
 
 /**
@@ -320,6 +363,21 @@ export const api = {
     }),
 
   posts: (brandId: number) => request<Post[]>(`/posts?brand_id=${brandId}&limit=50`),
+
+  analytics: (brandId: number, range: { from?: string; to?: string } = {}) => {
+    const params = new URLSearchParams({ brand_id: String(brandId) });
+    if (range.from) params.set("from", range.from);
+    if (range.to) params.set("to", range.to);
+    return request<Analytics>(`/analytics?${params}`);
+  },
+
+  analyticsSummaries: (brandId: number) =>
+    request<AnalyticsSummary[]>(`/analytics/summaries?brand_id=${brandId}&limit=5`),
+
+  generateAnalyticsSummary: (brandId: number) =>
+    request<{ enqueued: boolean }>(`/analytics/summaries/generate?brand_id=${brandId}`, {
+      method: "POST",
+    }),
 
   insights: (brandId: number) => request<Insight[]>(`/insights?brand_id=${brandId}&limit=50`),
 
