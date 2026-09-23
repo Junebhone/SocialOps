@@ -214,6 +214,7 @@ Three pages, all scoped by `brand_id` in the URL ([D17](docs/DECISIONS.md)). Lan
 | --- | --- |
 | [`/inbox?brand_id=1`](http://localhost:3000/inbox?brand_id=1) | Comments with category, sentiment, urgency and the drafted reply. Hover a row for Approve / Edit / Reject, or tick several and use **Approve selected**. |
 | [`/content?brand_id=1`](http://localhost:3000/content?brand_id=1) | Drop a photo in. One card per asset: the image, what the vision agent saw, the brand check, and three platform captions side by side. |
+| [`/analytics?brand_id=1`](http://localhost:3000/analytics?brand_id=1) | Sentiment trend, comment volume by category, and time to first response, filterable by date range, plus the analytics agent's weekly summary. Numbers are SQL, never a model (ADR-0005). |
 | [`/agents?brand_id=1`](http://localhost:3000/agents?brand_id=1) | Every model call — tokens, cost, p50/p95 — plus per-agent totals and the Failed Jobs panel. Click any entity link to see one comment end to end. |
 | [`localhost:8000/docs`](http://localhost:8000/docs) | OpenAPI for every endpoint. |
 

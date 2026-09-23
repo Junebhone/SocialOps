@@ -53,3 +53,23 @@ and no cache: the API stays stateless (hard rule 2).
 - Time to first response on seeded data uses synthetic August dates, so it
   shows weeks, not seconds. Demo it with fresh comments from
   `scripts/comment.sh`, which stamps `created_at` as now.
+
+## Addendum: the weekly summary (analytics agent)
+The module also ships a weekly plain-English summary per brand, written by an
+`analytics` agent (`tier: fast`). It follows the same rule as the dashboard:
+**the model never computes a number.** The worker calls
+`app/analytics_queries.py::compute_analytics` (the function behind
+`GET /analytics`), flattens the result into labelled lines, and the agent only
+puts those figures into words. The figures are stored with the text in
+`analytics_summaries.stats_json`, so every sentence can be checked against its
+inputs. A week with no triaged comments gets a fixed sentence and no model
+call, because a model asked to describe nothing tends to invent something.
+
+**Schedule.** Not an arq cron job, for the reason above. A plain asyncio loop
+in the worker (`_summary_loop`, the `_outbox_loop` pattern) checks hourly
+whether any brand lacks a summary for the Monday-to-Sunday week that just
+ended, in the brand's own time zone, and enqueues one job per missing week.
+The job may wait behind a replay, which is acceptable for a weekly digest;
+the hourly re-check is what guarantees it runs eventually. A DB check plus a
+per-week job key make the schedule idempotent. "Generate now" on the page
+enqueues a summary of the last 7 days on demand, for demos.

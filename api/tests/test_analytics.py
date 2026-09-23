@@ -1,12 +1,13 @@
 """GET /analytics: the numbers the Analytics page draws (ADR-0005)."""
 
-from datetime import timedelta
+from datetime import date, timedelta
 from typing import Any
 
 from httpx import AsyncClient
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.models import Brand, Comment, Outbox, Post, ReplyDraft
+from app.models import AnalyticsSummary, Brand, Comment, Outbox, Post, ReplyDraft
+from tests.conftest import FakeQueue
 from tests.factories import NOW, a_brand, a_post, an_account, build_comment
 
 RANGE = {"from": "2026-09-01", "to": "2026-09-30"}
@@ -164,3 +165,56 @@ async def test_response_time_counts_published_replies_only(
     assert rt["published"] == 1
     assert rt["p50_seconds"] == 600
     assert {b["label"]: b["comments"] for b in rt["histogram"]}["5-15 min"] == 1
+
+
+# --- weekly summaries -------------------------------------------------------
+
+
+async def _a_summary(session: AsyncSession, brand: Brand, text: str) -> None:
+    session.add(
+        AnalyticsSummary(
+            brand_id=brand.id,
+            period_start=date(2026, 9, 14),
+            period_end=date(2026, 9, 20),
+            text=text,
+            stats_json={"comments_triaged": 3},
+        )
+    )
+    await session.commit()
+
+
+async def test_summaries_require_a_brand(client: AsyncClient) -> None:
+    assert (await client.get("/analytics/summaries")).status_code == 422
+
+
+async def test_summaries_are_scoped_and_newest_first(
+    client: AsyncClient, session: AsyncSession
+) -> None:
+    ridgeline = await a_brand(session, name="Ridgeline Roasters")
+    fieldnote = await a_brand(session, name="Fieldnote Skin")
+    await _a_summary(session, ridgeline, "First week.")
+    await _a_summary(session, fieldnote, "Not ours.")
+    await _a_summary(session, ridgeline, "Second week.")
+
+    response = await client.get("/analytics/summaries", params={"brand_id": ridgeline.id})
+
+    assert [row["text"] for row in response.json()] == ["Second week.", "First week."]
+    assert response.json()[0]["stats_json"] == {"comments_triaged": 3}
+
+
+async def test_generate_enqueues_one_summary_job(
+    client: AsyncClient, session: AsyncSession, queue: FakeQueue
+) -> None:
+    brand = await a_brand(session)
+
+    response = await client.post("/analytics/summaries/generate", params={"brand_id": brand.id})
+
+    assert response.json() == {"enqueued": True}
+    assert list(queue.jobs.values()) == [("process_analytics_summary", (brand.id,))]
+
+
+async def test_generate_for_an_unknown_brand_is_404(client: AsyncClient, queue: FakeQueue) -> None:
+    response = await client.post("/analytics/summaries/generate", params={"brand_id": 999})
+
+    assert response.status_code == 404
+    assert queue.jobs == {}

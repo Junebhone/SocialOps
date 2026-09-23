@@ -110,6 +110,20 @@ async def enqueue_insight(brand_id: int) -> bool:
         return job is not None
 
 
+async def enqueue_analytics_summary(brand_id: int) -> bool:
+    """One weekly-summary job per "Generate summary" click, covering the last
+    7 days. Random suffix for the same reason as `enqueue_insight`: a second
+    click is a second real request. The worker's own Monday schedule keys its
+    jobs by week instead (`worker/main.py::enqueue_due_summaries`)."""
+    async with redis_pool() as redis:
+        job = await redis.enqueue_job(
+            "process_analytics_summary",
+            brand_id,
+            _job_id=f"analytics-{brand_id}-{uuid.uuid4().hex}",
+        )
+        return job is not None
+
+
 async def queue_depth() -> tuple[int, int]:
     """(queued, running), read live from Redis.
 

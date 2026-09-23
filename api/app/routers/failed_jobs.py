@@ -20,7 +20,13 @@ from app.models import FailedJob
 from app.routers.ingest import dead_letter_rows
 from app.routers.params import LimitQuery, OffsetQuery
 from app.schemas.agent_run import FailedJobRead
-from app.services.queue import enqueue_asset, enqueue_comments, enqueue_ideation, enqueue_insight
+from app.services.queue import (
+    enqueue_analytics_summary,
+    enqueue_asset,
+    enqueue_comments,
+    enqueue_ideation,
+    enqueue_insight,
+)
 
 router = APIRouter(prefix="/failed_jobs", tags=["failed_jobs"])
 
@@ -30,7 +36,15 @@ router = APIRouter(prefix="/failed_jobs", tags=["failed_jobs"])
 # so re-running it produces the identical failure forever. The remedy for a
 # malformed input row is to fix the source data and re-ingest, which happens
 # nowhere near this panel.
-RETRYABLE = frozenset({"process_comment", "process_asset", "process_ideation", "process_insight"})
+RETRYABLE = frozenset(
+    {
+        "process_comment",
+        "process_asset",
+        "process_ideation",
+        "process_insight",
+        "process_analytics_summary",
+    }
+)
 
 
 class RetryResult(BaseModel):
@@ -111,6 +125,13 @@ async def retry_failed_job(job_id: int, session: SessionDep) -> Any:
             brand_id = int(job.payload_json["brand_id"])
             queued = int(await enqueue_insight(brand_id))
             detail = f"Re-queued insight for brand {brand_id}"
+        case "process_analytics_summary":
+            # A retried summary covers the last 7 days as of now, not the
+            # week the failed job was for: the retry exists to get the brand
+            # a current summary, and the numbers are recomputed either way.
+            brand_id = int(job.payload_json["brand_id"])
+            queued = int(await enqueue_analytics_summary(brand_id))
+            detail = f"Re-queued analytics summary for brand {brand_id}"
         case _:
             # Including "ingest_comment". Retrying it re-runs a validation that
             # cannot pass — an earlier version did exactly that, returned the

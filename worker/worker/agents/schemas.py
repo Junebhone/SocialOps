@@ -229,3 +229,33 @@ class ContentInput(BaseModel):
     avoid_words: str
     prefer_words: str
     max_hashtags: int
+
+
+# --- analytics (fast tier) --------------------------------------------------
+
+
+class AnalyticsOutput(BaseModel):
+    """The analytics contract: a short plain-English summary of numbers the
+    prompt was given. The numbers themselves come from SQL (ADR-0005); the
+    model only puts them into words. `prompts/analytics.md` rule 2 is the real
+    guard against an invented figure — PromptedOutput has no schema field that
+    can rule one out."""
+
+    summary: str
+
+    @field_validator("summary")
+    @classmethod
+    def not_blank(cls, summary: str) -> str:
+        if not summary.strip():
+            raise ValueError("summary must not be empty")
+        return summary.strip()
+
+
+class AnalyticsInput(BaseModel):
+    """One brand's week, pre-flattened to labelled lines — same reasoning as
+    `InsightInput`: a 2B model reads short labelled lines far more reliably
+    than nested JSON."""
+
+    brand_name: str
+    period: str
+    stats: str

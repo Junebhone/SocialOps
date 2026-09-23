@@ -7,6 +7,7 @@ import { Button } from "@/components/ui/button";
 import {
   api,
   type Analytics as AnalyticsData,
+  type AnalyticsSummary,
   type Category,
   type CategoryPoint,
   type ResponseTimes,
@@ -115,6 +116,8 @@ export function Analytics() {
 
       {!data && !error && <p className="text-sm text-muted-foreground">Loading…</p>}
 
+      <WeeklySummary brandId={brandId} />
+
       {data && (
         <>
           <SummaryTiles data={data} />
@@ -123,6 +126,83 @@ export function Analytics() {
           <ResponseTimeChart rt={data.response_times} />
         </>
       )}
+    </div>
+  );
+}
+
+// --- weekly summary ----------------------------------------------------------
+
+const SUMMARY_POLL_MS = 3000;
+const SUMMARY_MAX_POLLS = 60; // ~3 min: generous for a cold local model on a small machine
+
+/**
+ * The analytics agent's latest summary. The agent only puts SQL-computed
+ * numbers into words (ADR-0005); the worker writes one every Monday for the
+ * week just ended, and "Generate now" asks for the last 7 days immediately.
+ */
+function WeeklySummary({ brandId }: { brandId: number }) {
+  const [latest, setLatest] = useState<AnalyticsSummary | null | undefined>(undefined);
+  const [generating, setGenerating] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  useEffect(() => {
+    let cancelled = false;
+    setLatest(undefined);
+    api
+      .analyticsSummaries(brandId)
+      .then((rows) => !cancelled && setLatest(rows[0] ?? null))
+      .catch((err: Error) => !cancelled && setError(err.message));
+    return () => {
+      cancelled = true;
+    };
+  }, [brandId]);
+
+  async function generate() {
+    if (generating) return;
+    setGenerating(true);
+    setError(null);
+    const before = latest?.id ?? 0;
+    try {
+      await api.generateAnalyticsSummary(brandId);
+      for (let attempt = 0; attempt < SUMMARY_MAX_POLLS; attempt++) {
+        await new Promise((resolve) => setTimeout(resolve, SUMMARY_POLL_MS));
+        const [newest] = await api.analyticsSummaries(brandId);
+        if (newest && newest.id > before) {
+          setLatest(newest);
+          return;
+        }
+      }
+      setError("Still working — the summary will appear here when the agent finishes. Check the Agents page.");
+    } catch (err) {
+      setError((err as Error).message);
+    } finally {
+      setGenerating(false);
+    }
+  }
+
+  return (
+    <div className="rounded-lg border border-border bg-card p-4">
+      <div className="mb-2 flex items-center justify-between gap-3">
+        <div>
+          <p className="text-sm font-medium">Weekly summary</p>
+          <p className="text-xs text-muted-foreground">
+            {latest
+              ? `${latest.period_start} to ${latest.period_end} · ${
+                  latest.agent_run_id === null ? "no comments, so no model ran" : "written by the analytics agent"
+                }`
+              : "Written every Monday for the week just ended."}
+          </p>
+        </div>
+        <Button size="sm" variant="outline" onClick={generate} disabled={generating}>
+          {generating ? "Writing…" : "Generate now"}
+        </Button>
+      </div>
+      {latest === undefined && !error && <p className="text-sm text-muted-foreground">Loading…</p>}
+      {latest === null && !generating && (
+        <p className="text-sm text-muted-foreground">No summary yet. Generate one for the last 7 days.</p>
+      )}
+      {latest && <p className="max-w-prose text-sm leading-relaxed">{latest.text}</p>}
+      {error && <p className="mt-2 text-xs text-status-bad">{error}</p>}
     </div>
   );
 }

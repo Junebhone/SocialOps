@@ -28,7 +28,15 @@ const PIPELINES = [
 // `agent_runs` totals only return rows for agents that have actually been
 // invoked, which used to mean this section was empty (or missing agents) on
 // a fresh brand; a sidebar that only sometimes has content reads as broken.
-const ALL_AGENTS = ["triage", "response", "content", "media", "ideation", "insight"] as const;
+const ALL_AGENTS = [
+  "triage",
+  "response",
+  "content",
+  "media",
+  "ideation",
+  "insight",
+  "analytics",
+] as const;
 
 // One color per brand so the sidebar dot and dropdown stay legible with more
 // than one brand seeded — cycles through the existing status/accent tokens

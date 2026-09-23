@@ -10,18 +10,25 @@ double-charged model calls and DLQ entries nobody can explain.
 """
 
 import asyncio
-from datetime import UTC, datetime
+from datetime import UTC, date, datetime, timedelta
 from typing import Any
 
 import structlog
-from app.models import Comment, FailedJob, Outbox, ReplyDraft
+from app.analytics_queries import today_in
+from app.models import AnalyticsSummary, Brand, Comment, FailedJob, Outbox, ReplyDraft
 from arq.connections import RedisSettings
 from sqlalchemy import select
 
 from worker.config import get_settings
 from worker.db import create_engine_and_sessionmaker, session_scope
 from worker.logging import bind_job_context, configure_logging
-from worker.orchestrator import run_asset, run_comment, run_ideation, run_insight
+from worker.orchestrator import (
+    run_analytics_summary,
+    run_asset,
+    run_comment,
+    run_ideation,
+    run_insight,
+)
 
 configure_logging()
 
@@ -112,6 +119,30 @@ async def process_insight(ctx: dict[str, Any], brand_id: int) -> str:
         return f"insight for brand {brand_id} processed by {', '.join(state.agents_run)}"
     except (Exception, asyncio.CancelledError) as exc:
         await _handle_failure(ctx, "process_insight", {"brand_id": brand_id}, exc)
+        raise
+
+
+async def process_analytics_summary(
+    ctx: dict[str, Any], brand_id: int, period_end: str | None = None
+) -> str:
+    """One weekly summary for a brand. Enqueued by a "Generate summary" click
+    (no `period_end`: the last 7 days up to today) or by the Monday schedule
+    (`period_end` = the Sunday that just ended). Same shape as
+    `process_insight`, down to the failure handling."""
+    bind_job_context(ctx)
+    factory = ctx["session_factory"]
+    end = date.fromisoformat(period_end) if period_end else None
+
+    try:
+        async with session_scope(factory) as session:
+            state = await run_analytics_summary(
+                brand_id, session, audit_factory=factory, period_end=end
+            )
+        ran = ", ".join(state.agents_run) or "no model (quiet week)"
+        return f"analytics summary for brand {brand_id} processed by {ran}"
+    except (Exception, asyncio.CancelledError) as exc:
+        payload: dict[str, Any] = {"brand_id": brand_id, "period_end": period_end}
+        await _handle_failure(ctx, "process_analytics_summary", payload, exc)
         raise
 
 
@@ -222,6 +253,68 @@ async def _outbox_loop(ctx: dict[str, Any]) -> None:
             log.exception("outbox.drain_failed")
 
 
+SUMMARY_CHECK_SECONDS = 3600
+
+
+def last_completed_sunday(today: date) -> date:
+    """The Sunday that ended the most recent full Monday-to-Sunday week.
+
+    On a Sunday that is a week ago, because today's week is not over yet.
+    `isoweekday()` is 1 for Monday through 7 for Sunday, which is exactly the
+    number of days back to that Sunday.
+    """
+    return today - timedelta(days=today.isoweekday())
+
+
+async def enqueue_due_summaries(ctx: dict[str, Any]) -> int:
+    """Enqueue last week's summary for every brand that does not have one yet.
+
+    Idempotent twice over: the DB check skips a week already summarized, and
+    the job key (brand + week) makes arq refuse a duplicate still in the queue
+    (D9). Returns how many jobs were enqueued.
+    """
+    enqueued = 0
+    async with ctx["session_factory"]() as session:
+        brands = (await session.execute(select(Brand.id, Brand.timezone))).all()
+        for brand_id, tz in brands:
+            week_end = last_completed_sunday(await today_in(session, tz))
+            done = await session.scalar(
+                select(AnalyticsSummary.id)
+                .where(AnalyticsSummary.brand_id == brand_id)
+                .where(AnalyticsSummary.period_end == week_end)
+                .limit(1)
+            )
+            if done is not None:
+                continue
+            job = await ctx["redis"].enqueue_job(
+                "process_analytics_summary",
+                brand_id,
+                week_end.isoformat(),
+                _job_id=f"analytics-weekly-{brand_id}-{week_end.isoformat()}",
+            )
+            enqueued += int(job is not None)
+    if enqueued:
+        log.info("analytics.weekly_enqueued", jobs=enqueued)
+    return enqueued
+
+
+async def _summary_loop(ctx: dict[str, Any]) -> None:
+    """Check hourly whether any brand is owed last week's summary.
+
+    Not an arq cron job, for the reason `_outbox_loop` gives: a cron job sorts
+    behind every queued comment job. This loop only *enqueues*; the summary job
+    itself may wait behind a replay, which is fine for a weekly digest (ADR-0005)
+    and is why the check repeats hourly rather than firing once on Monday.
+    """
+    while True:
+        try:
+            await enqueue_due_summaries(ctx)
+        except Exception:
+            # A failed check must not kill the loop; the next tick tries again.
+            log.exception("analytics.weekly_check_failed")
+        await asyncio.sleep(SUMMARY_CHECK_SECONDS)
+
+
 async def ping(ctx: dict[str, Any]) -> str:
     """Smoke-test job, kept so the queue can be exercised without a model."""
     bind_job_context(ctx)
@@ -235,6 +328,7 @@ async def startup(ctx: dict[str, Any]) -> None:
     ctx["engine"] = engine
     ctx["session_factory"] = factory
     ctx["outbox_task"] = asyncio.create_task(_outbox_loop(ctx))
+    ctx["summary_task"] = asyncio.create_task(_summary_loop(ctx))
     log.info(
         "worker.startup",
         llm_provider=settings.llm_provider,
@@ -244,9 +338,10 @@ async def startup(ctx: dict[str, Any]) -> None:
 
 
 async def shutdown(ctx: dict[str, Any]) -> None:
-    task = ctx.get("outbox_task")
-    if task is not None:
-        task.cancel()
+    for key in ("outbox_task", "summary_task"):
+        task = ctx.get(key)
+        if task is not None:
+            task.cancel()
     engine = ctx.get("engine")
     if engine is not None:
         await engine.dispose()
@@ -262,6 +357,7 @@ class WorkerSettings:
         process_asset,
         process_ideation,
         process_insight,
+        process_analytics_summary,
         drain_outbox,
         ping,
     ]

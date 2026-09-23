@@ -1,12 +1,15 @@
 """Analytics response shapes (ADR-0005).
 
-Every number here is computed by SQL in `app/routers/analytics.py`, never by a
+Every number here is computed by SQL in `app/analytics_queries.py`, never by a
 model. Days are calendar days in the brand's own time zone.
 """
 
-from datetime import date
+from datetime import date, datetime
+from typing import Any
 
 from pydantic import BaseModel
+
+from app.schemas.base import ORMModel
 
 
 class SentimentPoint(BaseModel):
@@ -45,3 +48,20 @@ class AnalyticsRead(BaseModel):
     sentiment: list[SentimentPoint]
     categories: list[CategoryPoint]
     response_times: ResponseTimes
+
+
+class AnalyticsSummaryRead(ORMModel):
+    """One weekly summary. `stats_json` is exactly what the agent was given."""
+
+    id: int
+    brand_id: int
+    period_start: date
+    period_end: date
+    text: str
+    stats_json: dict[str, Any]
+    agent_run_id: int | None
+    created_at: datetime
+
+
+class GenerateSummaryResult(BaseModel):
+    enqueued: bool

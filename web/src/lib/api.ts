@@ -130,7 +130,7 @@ export interface GenerateInsightsResult {
   enqueued: boolean;
 }
 
-export type AgentName = "triage" | "response" | "content" | "media" | "ideation" | "insight";
+export type AgentName = "triage" | "response" | "content" | "media" | "ideation" | "insight" | "analytics";
 export type AgentRunStatus = "ok" | "error";
 
 export interface AgentRun {
@@ -215,6 +215,19 @@ export interface ResponseTimes {
   p50_seconds: number | null;
   p95_seconds: number | null;
   histogram: { label: string; comments: number }[];
+}
+
+/** The analytics agent's weekly summary. `stats_json` is exactly what it was given. */
+export interface AnalyticsSummary {
+  id: number;
+  brand_id: number;
+  period_start: string;
+  period_end: string;
+  text: string;
+  stats_json: Record<string, unknown>;
+  // null for a quiet week: no model ran, the sentence is fixed text.
+  agent_run_id: number | null;
+  created_at: string;
 }
 
 export interface Analytics {
@@ -357,6 +370,14 @@ export const api = {
     if (range.to) params.set("to", range.to);
     return request<Analytics>(`/analytics?${params}`);
   },
+
+  analyticsSummaries: (brandId: number) =>
+    request<AnalyticsSummary[]>(`/analytics/summaries?brand_id=${brandId}&limit=5`),
+
+  generateAnalyticsSummary: (brandId: number) =>
+    request<{ enqueued: boolean }>(`/analytics/summaries/generate?brand_id=${brandId}`, {
+      method: "POST",
+    }),
 
   insights: (brandId: number) => request<Insight[]>(`/insights?brand_id=${brandId}&limit=50`),
 
