@@ -32,6 +32,7 @@ def test_brand_read_validates_from_an_orm_object() -> None:
         name = "Ridgeline Roasters"
         voice_guidelines = "Warm."
         brand_rules_json = BRAND_RULES
+        timezone = "UTC"
 
     assert BrandRead.model_validate(Row()).name == "Ridgeline Roasters"
 
