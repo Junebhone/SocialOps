@@ -18,6 +18,10 @@ dependencies = [
     "arq>=0.26",
     # Structured JSON logging (hard rule #8).
     "structlog>=24.4",
+    # The S3 half of StorageBackend (hard rule #9, D25): put/get/delete and presigned
+    # URLs. The AWS SDK is the only supported way to sign S3 requests; botocore's
+    # Stubber, which ships inside it, is what the storage tests use instead of AWS.
+    "boto3>=1.35",
 ]
 
 [project.optional-dependencies]

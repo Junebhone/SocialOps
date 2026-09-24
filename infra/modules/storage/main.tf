@@ -1,9 +1,8 @@
 # The S3 bucket behind StorageBackend (CLAUDE.md hard rule #9).
 #
-# Phase 1 ships only LocalDiskStorage. This bucket is where S3Storage will
-# point: one new StorageBackend subclass, call sites already awaiting (D25).
-# Until that class exists, STORAGE_BACKEND=s3 fails config validation at
-# container start, which is the loud failure we want.
+# S3Storage (api/app/storage.py, D25) reads and writes here when the tasks run
+# with STORAGE_BACKEND=s3 and STORAGE_ROOT set to this bucket's name. The browser
+# fetches objects through presigned links, so the bucket stays fully private.
 
 resource "aws_s3_bucket" "this" {
   bucket        = var.bucket_name

@@ -7,11 +7,25 @@ are mostly about that: what happens when the key is not one we generated.
 
 from __future__ import annotations
 
+import io
+from collections.abc import Iterator
 from pathlib import Path
+from typing import Any
+from urllib.parse import parse_qs, urlsplit
 
 import pytest
+from botocore.response import StreamingBody
+from botocore.stub import Stubber
 
-from worker.storage import LocalDiskStorage, StorageError, build_storage, new_key, validate_key
+from worker.storage import (
+    LocalDiskStorage,
+    S3Storage,
+    StorageError,
+    build_storage,
+    new_key,
+    validate_key,
+)
+from worker.storage import s3_client as s3_client_for
 
 
 @pytest.fixture
@@ -136,7 +150,157 @@ def test_new_key_drops_an_implausible_extension() -> None:
 
 
 def test_build_storage_rejects_an_unknown_backend() -> None:
-    """STORAGE_BACKEND is typed as Literal['local'] in config, so this is the
-    second line of defence rather than the first."""
+    """STORAGE_BACKEND is a Literal in config, so this is the second line of
+    defence rather than the first."""
     with pytest.raises(StorageError, match="Unknown STORAGE_BACKEND"):
-        build_storage("s3", "/tmp")
+        build_storage("gcs", "/tmp")
+
+
+def test_build_storage_s3_uses_storage_root_as_the_bucket() -> None:
+    """Terraform passes the bucket name as STORAGE_ROOT (infra/stack/main.tf)."""
+    storage = build_storage("s3", BUCKET, region="us-east-2")
+
+    assert isinstance(storage, S3Storage)
+    assert storage.bucket == BUCKET
+
+
+def test_build_storage_s3_needs_a_region() -> None:
+    """A presigned link signed for the wrong region is refused by S3, so a
+    missing region is a startup error, not a guess."""
+    with pytest.raises(StorageError, match="AWS_REGION"):
+        build_storage("s3", BUCKET)
+
+
+# --- S3 (Phase 4) ------------------------------------------------------------
+#
+# Botocore's Stubber sits between the client and the network: every call must
+# match a queued expectation, and nothing reaches AWS. The fake credentials are
+# only there because signing a request (and a presigned URL) needs some.
+
+BUCKET = "socialops-dev-uploads"
+
+
+@pytest.fixture(autouse=True)
+def fake_aws_credentials(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Every test here builds a real client, and botocore resolves credentials
+    when it does. Fake ones in the environment stop that walk before it reads a
+    developer's ~/.aws or probes the EC2 metadata address from inside CI."""
+    monkeypatch.setenv("AWS_ACCESS_KEY_ID", "testing")
+    monkeypatch.setenv("AWS_SECRET_ACCESS_KEY", "testing")
+    monkeypatch.setenv("AWS_EC2_METADATA_DISABLED", "true")
+    monkeypatch.delenv("AWS_PROFILE", raising=False)
+
+
+@pytest.fixture
+def s3_client() -> Any:
+    """Built by the production factory, so the signing config is what is tested."""
+    return s3_client_for("us-east-2")
+
+
+@pytest.fixture
+def s3_stub(s3_client: Any) -> Iterator[Stubber]:
+    with Stubber(s3_client) as stub:
+        yield stub
+        stub.assert_no_pending_responses()
+
+
+async def test_s3_put_then_get_round_trips(s3_client: Any, s3_stub: Stubber) -> None:
+    storage = S3Storage(BUCKET, s3_client)
+    body = b"\x89PNG bytes"
+    s3_stub.add_response(
+        "put_object",
+        {},
+        {"Bucket": BUCKET, "Key": "brands/1/abc.png", "Body": body, "ContentType": "image/png"},
+    )
+    s3_stub.add_response(
+        "get_object",
+        {"Body": StreamingBody(io.BytesIO(body), len(body))},
+        {"Bucket": BUCKET, "Key": "brands/1/abc.png"},
+    )
+
+    key = await storage.put("brands/1/abc.png", body)
+
+    assert key == "brands/1/abc.png"
+    assert await storage.get(key) == body
+
+
+async def test_s3_get_reports_a_missing_object(s3_client: Any, s3_stub: Stubber) -> None:
+    """Same error as local disk, so the file route and the media node handle a
+    missing object once, not once per backend."""
+    s3_stub.add_client_error("get_object", service_error_code="NoSuchKey", http_status_code=404)
+
+    with pytest.raises(StorageError, match="No object at"):
+        await S3Storage(BUCKET, s3_client).get("brands/1/never-written.png")
+
+
+async def test_s3_delete_is_idempotent(s3_client: Any, s3_stub: Stubber) -> None:
+    """S3 answers 204 for a key that is not there; the backend must not turn
+    that into an error, or the asset-delete cleanup path would need a try/except."""
+    expected = {"Bucket": BUCKET, "Key": "brands/1/a.png"}
+    s3_stub.add_response("delete_object", {}, expected)
+    s3_stub.add_response("delete_object", {}, expected)
+    storage = S3Storage(BUCKET, s3_client)
+
+    await storage.delete("brands/1/a.png")
+    await storage.delete("brands/1/a.png")
+
+
+def test_s3_url_is_a_presigned_link_the_browser_can_use(
+    s3_client: Any, s3_stub: Stubber
+) -> None:
+    """The bucket is private, so the browser gets a signed, expiring link rather
+    than an API route. Presigning is local computation: the active Stubber has
+    nothing queued, so any call to S3 here would fail the test."""
+    url = urlsplit(S3Storage(BUCKET, s3_client).url("brands/1/abc.png"))
+    query = parse_qs(url.query)
+
+    assert url.scheme == "https"
+    # Virtual-hosted, in the bucket's own region.
+    assert url.hostname == f"{BUCKET}.s3.us-east-2.amazonaws.com"
+    assert url.path == "/brands/1/abc.png"
+    # SigV4, scoped to that region. boto3's default here is SigV2, which
+    # us-east-2 refuses; this is the assertion that caught it.
+    assert query["X-Amz-Algorithm"] == ["AWS4-HMAC-SHA256"]
+    assert "/us-east-2/s3/aws4_request" in query["X-Amz-Credential"][0]
+    assert query["X-Amz-Expires"] == ["3600"]
+    assert "X-Amz-Signature" in query
+
+
+@pytest.mark.parametrize("key", ["../../etc/passwd", "/etc/passwd", "brands/../../x.png", ""])
+async def test_s3_refuses_a_traversing_key_before_calling_aws(
+    s3_client: Any, s3_stub: Stubber, key: str
+) -> None:
+    """A bucket has no `..`, but the key comes off a URL and out of the database,
+    and an unvalidated one would reach AWS signed with the task role. Nothing is
+    queued on the Stubber, so any call that got through would fail the test."""
+    storage = S3Storage(BUCKET, s3_client)
+
+    for attempt in (
+        storage.put(key, b"x"),
+        storage.get(key),
+        storage.delete(key),
+    ):
+        with pytest.raises(StorageError):
+            await attempt
+    with pytest.raises(StorageError):
+        storage.url(key)
+
+
+async def test_s3_never_labels_an_object_as_something_a_browser_would_run(
+    s3_client: Any, s3_stub: Stubber
+) -> None:
+    """The key's extension comes from the uploader's filename, and the presigned
+    link serves the object with whatever Content-Type it was stored under. An
+    `.html` or `.svg` key must not become text/html or image/svg+xml."""
+    for key in ("brands/1/x.html", "brands/1/x.svg"):
+        s3_stub.add_response(
+            "put_object",
+            {},
+            {
+                "Bucket": BUCKET,
+                "Key": key,
+                "Body": b"<script>",
+                "ContentType": "application/octet-stream",
+            },
+        )
+        await S3Storage(BUCKET, s3_client).put(key, b"<script>")

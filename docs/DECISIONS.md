@@ -685,6 +685,29 @@ I/O to produce one; presigning is local computation.
   imports that module and has no FastAPI, so a `from fastapi import Depends` at its top would break
   the worker at import. Framework wiring lives in `app/routers/params.py`; the backend stays plain.
 
+**Update: `S3Storage` landed.** It is the second subclass, and no call site changed, which is
+what this decision was for. `STORAGE_ROOT` is the bucket name, as Terraform already passes it.
+Three details are not obvious from the interface:
+
+* **The client is built by `s3_client(region)` with SigV4 and virtual-hosted addressing pinned.**
+  boto3's defaults presign with legacy SigV2, which newer regions (us-east-2 among them) refuse.
+  The test suite builds its stubbed client through the same factory, so the signing config is
+  what gets tested.
+* **The region comes from `AWS_REGION` through `config.py`,** not from boto3's own environment
+  lookup, because boto3 reads `AWS_DEFAULT_REGION` and ECS/Terraform set `AWS_REGION`. It is the
+  one optional setting; a validator makes `STORAGE_BACKEND=s3` without it a startup error.
+* **Only `NoSuchKey` becomes `StorageError`.** Access denied or throttling propagates, so arq
+  retries it (hard rule #7) instead of a caller treating it as a missing image.
+* **The backend is built once, not per request.** Each client gets a private boto3 Session,
+  because `boto3.client()` shares a module-global one and sessions are not thread-safe; FastAPI
+  runs sync dependencies in a threadpool, so per-request construction would race. The API builds
+  the backend in the lifespan and reads it from `request.state`, exactly like the engine (hard
+  rule #2 holds: no module global). The worker caches it per process with `lru_cache`, like its
+  settings.
+* **Only image types get an image `Content-Type`.** The key's extension comes from the
+  uploader's filename, and a presigned link serves the stored type, so anything outside the
+  upload allowlist is stored as `application/octet-stream` rather than `text/html` or SVG.
+
 **Touches:** `CLAUDE.md` repo layout and hard rule #9 · step 6 in `PROMPTS.md`.
 
 ---
@@ -956,8 +979,8 @@ change are the ones D2 predicted.
 
 **Consequence.** Applying proves the infrastructure and the database path,
 because the migrate task runs, but does not yet run the app.
-`STORAGE_BACKEND=s3` and `LLM_PROVIDER=bedrock` need `S3Storage` and one
-`case` in `worker/llm.py`, both app changes for a later module. Anyone who can
+`LLM_PROVIDER=bedrock` needs one `case` in `worker/llm.py`, an app change for
+a later module. (`S3Storage` has since landed; see D25.) Anyone who can
 push a branch can read the database passwords through a plan, and that is the
 stated trust boundary. Full reasoning
 and alternatives are in [ADR-0006](decisions/0006-terraform-layout-and-ci.md).

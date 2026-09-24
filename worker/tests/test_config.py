@@ -1,9 +1,17 @@
 """Step 0 acceptance: the worker's config is the only thing that knows a model name."""
 
 import pytest
+from pydantic import ValidationError
 from pydantic_ai import models
 
 from worker.config import Settings
+
+
+@pytest.fixture(autouse=True)
+def no_region_in_the_environment(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Settings also reads the environment, so an AWS_REGION exported in the
+    shell or CI job would satisfy the "missing region" tests by accident."""
+    monkeypatch.delenv("AWS_REGION", raising=False)
 
 
 def _settings(**overrides: str) -> Settings:
@@ -47,3 +55,17 @@ def test_ollama_base_url_normalises_to_openai_path(configured: str, expected: st
 def test_real_model_requests_are_blocked() -> None:
     """Hard rule #10 is enforced by the suite, not by convention."""
     assert models.ALLOW_MODEL_REQUESTS is False
+
+
+def test_s3_storage_is_accepted_with_a_region() -> None:
+    """Phase 4: the ECS task sets STORAGE_BACKEND=s3 and AWS_REGION (infra/stack)."""
+    settings = _settings(storage_backend="s3", storage_root="bucket", aws_region="us-east-2")
+
+    assert settings.storage_backend == "s3"
+    assert settings.aws_region == "us-east-2"
+
+
+def test_s3_storage_without_a_region_fails_at_startup() -> None:
+    """Caught when the worker boots, not on the first image an hour into a replay."""
+    with pytest.raises(ValidationError, match="AWS_REGION"):
+        _settings(storage_backend="s3", storage_root="bucket")

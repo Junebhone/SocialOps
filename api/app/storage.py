@@ -23,10 +23,16 @@ I/O to produce one — presigning is local computation.
 from __future__ import annotations
 
 import asyncio
+import mimetypes
 import re
 from abc import ABC, abstractmethod
 from pathlib import Path
+from typing import Any
 from uuid import uuid4
+
+import boto3
+from botocore.config import Config
+from botocore.exceptions import ClientError
 
 # The API route that serves a locally-stored file.
 #
@@ -36,6 +42,15 @@ from uuid import uuid4
 # presigned URL instead and this route goes away — the web app never learns
 # which backend it is talking to, which is the point.
 ASSET_FILE_ROUTE = "/assets/file"
+
+# How long a presigned S3 link stays valid. One hour: long enough for a slow page
+# and a reviewer who leaves the tab open, short enough that a leaked link dies.
+PRESIGNED_URL_TTL_SECONDS = 3600
+
+# The only Content-Types S3Storage will store an object under. The upload route's
+# own allowlist (ALLOWED_MIME in routers/assets.py), repeated here because this
+# module is also the worker's and must not import a router.
+SERVABLE_IMAGE_TYPES = frozenset({"image/png", "image/jpeg", "image/webp"})
 
 # Conservative on purpose: a storage key is also a URL path segment and a
 # filesystem path, so it may contain only what is unambiguous in both.
@@ -143,13 +158,102 @@ class LocalDiskStorage(StorageBackend):
         await asyncio.to_thread(path.unlink, True)
 
 
-def build_storage(backend: str, root: str) -> StorageBackend:
+def s3_client(region: str) -> Any:
+    """An S3 client configured for presigning, not just for calls.
+
+    Both settings are load-bearing. Left to its defaults, boto3 presigns with the
+    legacy SigV2 scheme, which regions opened since 2014 (us-east-2 among them)
+    reject outright. Virtual-hosted addressing is what AWS recommends for presigned
+    links. The region is passed in rather than read from the environment because
+    boto3 reads AWS_DEFAULT_REGION, while ECS and Terraform set AWS_REGION.
+    Credentials are left to boto3's chain: the task role on ECS.
+
+    A private Session, not `boto3.client()`: that shares one module-global session,
+    and sessions are not thread-safe. The finished client is, so callers build it
+    once at startup and share it.
+    """
+    return boto3.session.Session().client(
+        "s3",
+        region_name=region,
+        config=Config(signature_version="s3v4", s3={"addressing_style": "virtual"}),
+    )
+
+
+class S3Storage(StorageBackend):
+    """Phase 4: one private bucket. `STORAGE_ROOT` is its name.
+
+    boto3 is synchronous, so each call runs in a worker thread, the same way
+    `LocalDiskStorage` keeps disk I/O off the event loop. The client is passed in
+    rather than built here: `build_storage` owns the region and signing config, and
+    the tests hand in a stubbed client.
+    """
+
+    def __init__(self, bucket: str, client: Any) -> None:
+        self.bucket = bucket
+        self._client = client
+
+    async def put(self, key: str, data: bytes) -> str:
+        # Content-Type is stored with the object because a presigned URL serves
+        # it straight to the browser. Only the image types the upload route
+        # accepts are labelled as such: the extension comes from the uploader's
+        # filename, and an object stored as text/html or image/svg+xml would run
+        # in the browser from our bucket. Anything else is served as a download.
+        guessed = mimetypes.guess_type(validate_key(key))[0]
+        content_type = guessed if guessed in SERVABLE_IMAGE_TYPES else "application/octet-stream"
+        await asyncio.to_thread(
+            self._client.put_object,
+            Bucket=self.bucket,
+            Key=key,
+            Body=data,
+            ContentType=content_type,
+        )
+        return key
+
+    async def get(self, key: str) -> bytes:
+        def read() -> bytes:
+            try:
+                response = self._client.get_object(Bucket=self.bucket, Key=validate_key(key))
+            except ClientError as exc:
+                # Only "not there" becomes StorageError. Access denied or a
+                # throttle is a real fault and propagates, so arq retries it
+                # instead of the caller treating it as a missing image.
+                if exc.response.get("Error", {}).get("Code") in ("NoSuchKey", "404"):
+                    raise StorageError(f"No object at {key!r}") from exc
+                raise
+            body: bytes = response["Body"].read()
+            return body
+
+        return await asyncio.to_thread(read)
+
+    def url(self, key: str) -> str:
+        # Signed with whatever credentials built the client: the ECS task role in
+        # Phase 4. A fresh link is minted on every API response, so the expiry
+        # only has to outlive one page view, not a bookmark.
+        url: str = self._client.generate_presigned_url(
+            "get_object",
+            Params={"Bucket": self.bucket, "Key": validate_key(key)},
+            ExpiresIn=PRESIGNED_URL_TTL_SECONDS,
+        )
+        return url
+
+    async def delete(self, key: str) -> None:
+        # Idempotent for free: S3 answers 204 whether or not the key existed.
+        await asyncio.to_thread(
+            self._client.delete_object, Bucket=self.bucket, Key=validate_key(key)
+        )
+
+
+def build_storage(backend: str, root: str, region: str | None = None) -> StorageBackend:
     """Backend name -> implementation.
 
-    Takes the two values rather than reading config, because the API and the
-    worker each read their own environment (D22) and this is the one piece both
-    of them share.
+    Takes the values rather than reading config, because the API and the worker
+    each read their own environment (D22) and this is the one piece both of them
+    share. For S3, `root` is the bucket name: Terraform passes it as STORAGE_ROOT.
     """
     if backend == "local":
         return LocalDiskStorage(root)
+    if backend == "s3":
+        if not region:
+            raise StorageError("STORAGE_BACKEND=s3 needs AWS_REGION")
+        return S3Storage(root, s3_client(region))
     raise StorageError(f"Unknown STORAGE_BACKEND: {backend!r}")

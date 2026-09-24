@@ -10,8 +10,9 @@ knows that `fast` currently means `qwen3.5:2b`.
 """
 
 from functools import lru_cache
-from typing import Literal
+from typing import Literal, Self
 
+from pydantic import model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 Tier = Literal["fast", "standard", "vision"]
@@ -31,14 +32,24 @@ class Settings(BaseSettings):
     database_url: str
     redis_url: str
 
-    storage_backend: Literal["local"]
+    storage_backend: Literal["local", "s3"]
+    # A directory for `local`, the bucket name for `s3` (infra/stack/main.tf).
     storage_root: str
+    # Only S3 needs it, so it is the one optional field here. The validator below
+    # still makes a missing region fail at startup rather than at the first image.
+    aws_region: str | None = None
 
     llm_provider: LLMProvider
     llm_model_fast: str
     llm_model_text: str
     llm_model_vision: str
     ollama_base_url: str
+
+    @model_validator(mode="after")
+    def _s3_needs_a_region(self) -> Self:
+        if self.storage_backend == "s3" and not self.aws_region:
+            raise ValueError("STORAGE_BACKEND=s3 needs AWS_REGION")
+        return self
 
     def model_for_tier(self, tier: Tier) -> str:
         """Tier → model name (D6). Agents never name a model."""
