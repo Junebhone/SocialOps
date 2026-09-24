@@ -32,11 +32,10 @@ locals {
 
   app_secrets = [{ name = "DATABASE_URL", valueFrom = var.database_url_secret_arn }]
 
-  # Alembic's env.py imports config.py, which validates every variable, and
-  # Phase 1's config accepts only STORAGE_BACKEND=local. Migrations never touch
-  # storage, so the migrate task is given the backend that exists today. That
-  # lets it run, and prove the network path and DATABASE_URL secret, before
-  # S3Storage lands. Once it does, "local" stays valid here.
+  # Alembic's env.py imports config.py, which validates every variable.
+  # Migrations never touch storage, so the migrate task is given "local": it
+  # needs no bucket access and no AWS_REGION, and it proves the network path
+  # and the DATABASE_URL secret on its own.
   migrate_env = [
     for k, v in merge(var.app_environment, { STORAGE_BACKEND = "local", STORAGE_ROOT = "/tmp/unused" }) :
     { name = k, value = v }

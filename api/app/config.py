@@ -7,8 +7,9 @@ environment, which is what makes the Phase 2+ move to RDS/ElastiCache an env cha
 """
 
 from functools import lru_cache
-from typing import Literal
+from typing import Literal, Self
 
+from pydantic import model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 # Mirrors `worker/worker/config.py`. A validation allowlist, not a hardcoded
@@ -24,8 +25,12 @@ class Settings(BaseSettings):
     database_url: str
     redis_url: str
 
-    storage_backend: Literal["local"]
+    storage_backend: Literal["local", "s3"]
+    # A directory for `local`, the bucket name for `s3` (infra/stack/main.tf).
     storage_root: str
+    # Only S3 needs it, so it is the one optional field here. The validator below
+    # still makes a missing region fail at startup rather than at the first upload.
+    aws_region: str | None = None
 
     llm_provider: LLMProvider
     llm_model_fast: str
@@ -37,6 +42,12 @@ class Settings(BaseSettings):
     # The API never calls a model, so a copy here would be a second source of truth for
     # the exact mapping D6 exists to centralise. The variables are still declared and
     # required so a misconfigured deployment fails at API start, not at first job.
+
+    @model_validator(mode="after")
+    def _s3_needs_a_region(self) -> Self:
+        if self.storage_backend == "s3" and not self.aws_region:
+            raise ValueError("STORAGE_BACKEND=s3 needs AWS_REGION")
+        return self
 
 
 @lru_cache

@@ -22,6 +22,10 @@ dependencies = [
     # standard library, and it is already the api's dev-extra for drawing the
     # sample product images, so it is not a new name in the project.
     "pillow>=11",
+    # The worker imports the api's app/storage.py (D24/D25), which now holds S3Storage.
+    # Not a new name in the project: it is the api's dependency, needed here because
+    # the module is shared, and the media node reads uploads back through it.
+    "boto3>=1.35",
 ]
 
 [project.optional-dependencies]

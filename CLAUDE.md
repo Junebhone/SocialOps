@@ -61,7 +61,8 @@ socialops/
 8. Structured JSON logging (`structlog`) from day one, one log line per request/job with
    `request_id`/`job_id`.
 9. Storage access only through `StorageBackend` (`put`, `get`, `url`, `delete`). Phase 1
-   implementation is `LocalDiskStorage`. S3 comes later; don't write it now.
+   implementation is `LocalDiskStorage`; `S3Storage` exists for the AWS stack (D25), selected by
+   `STORAGE_BACKEND=s3`.
 10. Tests: `pytest` for api and worker. Agents are unit-tested with Pydantic AI's `TestModel`
     / `FunctionModel` via `Agent.override(model=...)`. Set `models.ALLOW_MODEL_REQUESTS = False`
     in `conftest.py`. No test may call a real model.

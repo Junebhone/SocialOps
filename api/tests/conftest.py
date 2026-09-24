@@ -14,6 +14,7 @@ import os
 import subprocess
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
+from pathlib import Path
 from types import SimpleNamespace
 from typing import Any
 
@@ -51,7 +52,9 @@ for _key, _value in _TEST_ENV.items():
 from app.db import get_session  # noqa: E402
 from app.main import app  # noqa: E402
 from app.models import Base  # noqa: E402
+from app.routers.params import get_storage  # noqa: E402
 from app.services import queue as queue_service  # noqa: E402
+from app.storage import LocalDiskStorage  # noqa: E402
 
 
 def _test_database_url() -> str:
@@ -176,12 +179,13 @@ def queue(monkeypatch: pytest.MonkeyPatch) -> FakeQueue:
 @pytest.fixture
 async def client(
     session_factory: async_sessionmaker[AsyncSession],
+    tmp_path: Path,
 ) -> AsyncIterator[AsyncClient]:
     """An HTTP client bound to the test database.
 
     httpx's ASGITransport does not run the app's lifespan, so `request.state`
-    has no sessionmaker. Overriding the dependency is what makes this work — and
-    is why no `asgi-lifespan` dependency is needed.
+    has no sessionmaker and no storage. Overriding the dependencies is what makes
+    this work — and is why no `asgi-lifespan` dependency is needed.
     """
 
     async def _override() -> AsyncIterator[AsyncSession]:
@@ -193,6 +197,10 @@ async def client(
                 raise
 
     app.dependency_overrides[get_session] = _override
+    # Storage lives on request.state too. setdefault, because a test that needs to
+    # inspect the files (test_assets' `storage` fixture) may already have put its
+    # own backend here.
+    app.dependency_overrides.setdefault(get_storage, lambda: LocalDiskStorage(tmp_path))
     async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as http_client:
         yield http_client
     app.dependency_overrides.clear()

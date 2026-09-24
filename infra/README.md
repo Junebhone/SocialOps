@@ -67,7 +67,7 @@ It is the Phase 1 compose stack, re-platformed and not re-architected
 |---|---|---|---|
 | `postgres` container | RDS PostgreSQL 16, private, encrypted | `database` | `DATABASE_URL`, now read from Secrets Manager |
 | `redis` container | ElastiCache Redis 7 with TLS | `cache` | `REDIS_URL` becomes `rediss://…` |
-| `./storage` volume | S3 bucket, versioned, lifecycle rules | `storage` | `STORAGE_BACKEND=s3` (needs `S3Storage`, see [gaps](#known-gaps)) |
+| `./storage` volume | S3 bucket, versioned, lifecycle rules | `storage` | `STORAGE_BACKEND=s3`, `STORAGE_ROOT` = bucket name, `AWS_REGION` |
 | arq on Redis | arq on ElastiCache; SQS + DLQ provisioned for the later swap | `queue` | nothing yet |
 | `api`, `worker`, `web` containers | ECS Fargate services, same images | `ecs` | only the dev start commands are overridden |
 | ports 3000 / 8000 | one ALB, listeners 80 → web and 8000 → api | `alb` | `NEXT_PUBLIC_API_URL` becomes the ALB address |
@@ -245,11 +245,11 @@ request gets a plan comment per environment.
    terraform -chdir=infra/stack output web_url
    ```
 
-**Read [Known gaps](#known-gaps) before step 4.** Until `S3Storage` exists,
-the api and worker services refuse to start on AWS, because config validation
-rejects `STORAGE_BACKEND=s3`. The migrate task is the exception: it never
-touches storage and is given `local`. Applying today proves the
-infrastructure and the database path, not a running app.
+**Read [Known gaps](#known-gaps) before step 4.** Storage is ready for AWS
+(`S3Storage`), but the worker cannot call a model there until
+`LLM_PROVIDER=bedrock` is implemented. The migrate task never touches storage
+and is given `local`. Applying today proves the infrastructure, the database
+path and S3 uploads, not the agent pipeline.
 
 ### 5. Promote to staging
 
@@ -377,10 +377,6 @@ their own after seven days.
 These are left for later modules on purpose. Each needs app code, not
 infrastructure.
 
-- **`S3Storage` does not exist yet.** The api and worker task definitions set
-  `STORAGE_BACKEND=s3`, and `config.py` accepts only `local`, so both fail at
-  start, loudly and on purpose. It needs one `StorageBackend` subclass (D25).
-  The migrate task is given `local` and runs today.
 - **`LLM_PROVIDER=bedrock` raises `NotImplementedError`** in
   `worker/llm.py::_build_model`. It needs one `case`, as the README's
   *Switching LLM provider* section describes.

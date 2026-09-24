@@ -39,6 +39,7 @@ from app.routers import (
     reply_drafts,
 )
 from app.services import queue as queue_service
+from app.storage import StorageBackend, build_storage
 
 configure_logging()
 
@@ -48,6 +49,7 @@ log = structlog.get_logger()
 class State(TypedDict):
     engine: AsyncEngine
     sessionmaker: async_sessionmaker[AsyncSession]
+    storage: StorageBackend
 
 
 @asynccontextmanager
@@ -59,8 +61,12 @@ async def lifespan(app: FastAPI) -> AsyncIterator[State]:
     failure instead of a 500 on the first request.
     """
     engine, sessionmaker = create_engine_and_sessionmaker()
+    # Built once, like the engine: an S3 client is expensive to construct and
+    # safe to share across requests (D25). Local disk is two strings either way.
+    settings = get_settings()
+    storage = build_storage(settings.storage_backend, settings.storage_root, settings.aws_region)
     try:
-        yield {"engine": engine, "sessionmaker": sessionmaker}
+        yield {"engine": engine, "sessionmaker": sessionmaker, "storage": storage}
     finally:
         await engine.dispose()
 
