@@ -27,8 +27,7 @@ services = {
 }
 
 # Promote a build by copying the SHA dev has been running into this line.
-# Placeholder until CI has pushed a build: see the note in env/dev.tfvars.
-image_tag = "da25d3d30cf1faf89761022d2308bc0e8929b8a3"
+image_tag = "8d183a315eb18fff3e5745a40297c8e13b7dcf6d"
 
 # The config.py contract for models (tier -> model, D6). Ollama is the local
 # default and does not run on AWS, so AWS environments use Bedrock. Current
