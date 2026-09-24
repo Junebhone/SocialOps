@@ -53,8 +53,12 @@ for env in "${ENVIRONMENTS[@]}"; do
 done
 
 step "terraform test (mocked AWS provider, no credentials)"
+# TF_WORKSPACE=default: terraform test runs in whichever workspace is
+# selected. After `make tf-plan` that is dev or staging, and the test that
+# proves the workspace guard fires would then find a matching pair and fail.
+# Pinning it makes a laptop behave like CI's clean checkout.
 for env in "${ENVIRONMENTS[@]}"; do
-  check "stack [$env]" terraform -chdir=stack test -no-color -var-file="env/$env.tfvars"
+  check "stack [$env]" env TF_WORKSPACE=default terraform -chdir=stack test -no-color -var-file="env/$env.tfvars"
 done
 for dir in bootstrap modules/*/; do
   dir="${dir%/}"
