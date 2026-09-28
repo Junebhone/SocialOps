@@ -6,7 +6,10 @@ requires-python = ">=3.12"
 dependencies = [
     "fastapi>=0.115",
     "uvicorn[standard]>=0.32",
-    "sqlalchemy[asyncio]>=2.0.36",
+    # Capped below 2.1: 2.1 changed the typing of select()/Row, and a fresh build
+    # resolving it fails mypy in app/routers/agent_runs.py. The images now resolve
+    # dependencies from scratch (D33), so an open range is a live risk, not a latent one.
+    "sqlalchemy[asyncio]>=2.0.36,<2.1",
     "asyncpg>=0.30",
     "alembic>=1.16,<2",
     "pydantic>=2.9",

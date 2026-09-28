@@ -1,0 +1,60 @@
+# Governs builds whose context is the repo root: today that is only the worker
+# (docker-compose.yml `context: .`, D24). The api and web builds use their own
+# directory as context and read api/.dockerignore and web/.dockerignore instead.
+# The worker image COPYs only worker/, api/app/ and data/trends.json; everything
+# else here is kept out of the build context so it cannot reach a layer by accident.
+
+# Secrets. .env is passed at runtime by compose's env_file and must never be in a
+# layer. .env.example is excluded too: no image reads it.
+**/.env
+**/.env.*
+# SSH keys and certificates, e.g. the VM's socialops-key.pem if copied into the repo.
+**/*.pem
+**/*.key
+# Claude Code's local settings can hold machine-specific permissions and paths.
+.claude/
+
+# Git history: large, useless at runtime, and it would keep any secret ever committed.
+.git/
+.gitignore
+.github/
+
+# Dependency trees are rebuilt inside the image for Linux; host copies are the wrong
+# platform (darwin/arm64) and web/node_modules alone is ~540 MB of context.
+**/node_modules/
+**/.venv/
+**/venv/
+
+# Python bytecode and tool caches: regenerated on demand, host-specific, and noisy.
+**/__pycache__/
+**/*.pyc
+**/.pytest_cache/
+**/.mypy_cache/
+**/.ruff_cache/
+**/*.egg-info/
+
+# Local runtime data. storage/ holds user uploads (a volume at runtime); *.log is output.
+storage/
+**/storage/
+**/*.log
+
+# Synthetic datasets and seed scripts are mounted for dev commands, not baked into
+# images. trends.json is the one file the worker reads at runtime.
+data/
+!data/trends.json
+
+# Terraform: provider binaries in .terraform/ (hundreds of MB) and state files that
+# hold the RDS password. Not needed by any image.
+infra/
+**/.terraform/
+**/*.tfstate
+**/*.tfstate.*
+
+# Not part of the worker build: the web app, docs, scripts and top-level documents.
+web/
+docs/
+scripts/
+*.md
+*.pdf
+Makefile
+docker-compose*.yml

@@ -1,3 +1,13 @@
+# The production-shaped stack: runtime images, named volumes, one private network,
+# nothing but the api and web ports published. This file alone is what the VM runs:
+#
+#   docker compose -f docker-compose.yml up --build -d      (make up-prod)
+#
+# A plain `docker compose ...` also merges docker-compose.override.yml, which swaps
+# in the dev targets, source bind mounts and hot reload for local work (D33).
+#
+# Ollama is NOT a service here. It runs on the host and the containers reach it at
+# host.docker.internal over the Docker bridge (D34).
 name: socialops
 
 services:
@@ -7,10 +17,10 @@ services:
       POSTGRES_USER: ${POSTGRES_USER:-socialops}
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-socialops}
       POSTGRES_DB: ${POSTGRES_DB:-socialops}
-    ports:
-      - "${POSTGRES_PORT:-5432}:5432"
     volumes:
       - pgdata:/var/lib/postgresql/data
+    networks: [socialops]
+    restart: unless-stopped
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-socialops} -d ${POSTGRES_DB:-socialops}"]
       interval: 5s
@@ -19,10 +29,10 @@ services:
 
   redis:
     image: redis:7-alpine
-    ports:
-      - "${REDIS_PORT:-6379}:6379"
     volumes:
       - redisdata:/data
+    networks: [socialops]
+    restart: unless-stopped
     healthcheck:
       test: ["CMD", "redis-cli", "ping"]
       interval: 5s
@@ -32,7 +42,7 @@ services:
   api:
     build:
       context: ./api
-    command: uvicorn app.main:app --host 0.0.0.0 --port 8000 --reload
+    # Secrets and settings reach the process at runtime, never through the image.
     env_file:
       - .env
     environment:
@@ -43,9 +53,11 @@ services:
     ports:
       - "${API_PORT:-8000}:8000"
     volumes:
-      - ./api:/app
-      - ./data:/app/data
-      - ./storage:/app/storage
+      - uploads:/app/storage
+      # Seed scripts and synthetic datasets for `make seed`. Read-only, and data,
+      # not code: the image stays the only source of what runs.
+      - ./data:/app/data:ro
+    networks: [socialops]
     extra_hosts:
       - "host.docker.internal:host-gateway"
     depends_on:
@@ -53,6 +65,7 @@ services:
         condition: service_healthy
       redis:
         condition: service_healthy
+    restart: unless-stopped
     healthcheck:
       # /health/ready, not /health. Liveness answers "is the process up", which
       # stayed true while Postgres was down after the disk filled — four green
@@ -70,7 +83,6 @@ services:
       # the schema is defined once and shared, never duplicated (D24).
       context: .
       dockerfile: worker/Dockerfile
-    command: arq worker.main.WorkerSettings
     env_file:
       - .env
     environment:
@@ -78,13 +90,9 @@ services:
       REDIS_URL: redis://redis:6379/0
       STORAGE_ROOT: /app/storage
     volumes:
-      - ./worker:/app
-      # Dev hot-reload for the shared models; the image already contains a copy.
-      - ./api/app:/opt/api/app:ro
-      - ./data:/app/data
-      - ./storage:/app/storage
-      # `make eval` appends its result row here (D5).
-      - ./docs:/app/docs
+      # The same volume as the api: it writes an upload, the worker reads it back.
+      - uploads:/app/storage
+    networks: [socialops]
     extra_hosts:
       - "host.docker.internal:host-gateway"
     depends_on:
@@ -92,6 +100,7 @@ services:
         condition: service_healthy
       redis:
         condition: service_healthy
+    restart: unless-stopped
     healthcheck:
       # arq writes a health record to Redis on an interval; `--check` reads it
       # and exits non-zero when it is stale. That is a real liveness signal:
@@ -107,32 +116,35 @@ services:
   web:
     build:
       context: ./web
-    command: npm run dev -- --hostname 0.0.0.0 --port 3000
     environment:
       # Browser-side calls hit the API through the host port mapping, not the compose
       # network — the browser cannot resolve `api:8000`. Required with no inline default,
       # so the address is configuration rather than a hostname written into a file
-      # (hard rule #1). It is set in .env.example.
+      # (hard rule #1). It is set in .env.example. The runtime image writes it into
+      # the bundle at start (web/entrypoint.sh), so changing it needs the container
+      # recreated (`docker compose up` does that), not the image rebuilt.
       NEXT_PUBLIC_API_URL: ${NEXT_PUBLIC_API_URL:?set NEXT_PUBLIC_API_URL in .env}
-      WATCHPACK_POLLING: "true"
     ports:
       - "${WEB_PORT:-3000}:3000"
-    volumes:
-      - ./web:/app
-      - /app/node_modules
-      - /app/.next
+    networks: [socialops]
     depends_on:
       - api
+    restart: unless-stopped
     healthcheck:
       # wget is busybox's, already in node:24-alpine — no curl to install.
       test: ["CMD-SHELL", "wget -q -O /dev/null http://127.0.0.1:3000/inbox || exit 1"]
       interval: 30s
       timeout: 10s
       retries: 5
-      # `next dev` compiles a route on first request, and the first compile of
-      # the Inbox is slow enough to fail a tighter window on a cold container.
-      start_period: 90s
+      start_period: 30s
+
+networks:
+  # One user-defined bridge: services resolve each other by name (postgres, redis,
+  # api), and nothing outside the stack can join it.
+  socialops:
 
 volumes:
   pgdata:
   redisdata:
+  # Uploaded images, shared by api and worker. LocalDiskStorage's root (hard rule #9).
+  uploads:

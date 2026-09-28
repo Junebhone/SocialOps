@@ -1,4 +1,4 @@
-.PHONY: up down logs migrate seed test lint replay replay-full eval measure measure-full diagrams demo models models-light reset prune tf-check tf-init tf-plan tf-apply
+.PHONY: up up-prod down logs migrate seed test lint replay replay-full eval measure measure-full diagrams demo models models-light reset prune tf-check tf-init tf-plan tf-apply
 
 # `docker compose exec` allocates a TTY by default, which a CI runner does not
 # have. CI calls `make test DC_EXEC="docker compose exec -T"`; locally nothing
@@ -13,6 +13,13 @@ up:
 	@# `reset`, because `up` is the target that builds.
 	@docker image prune -f >/dev/null
 	@docker run --rm alpine:3 df -h / | awk 'NR==2 {printf "  %s free of %s in the Docker VM\n", $$4, $$2}'
+
+# The production-shaped stack alone: runtime images, named volumes, no source
+# mounts, Postgres and Redis unpublished. What the VM runs (D33). `-f` is what
+# keeps docker-compose.override.yml, the dev layer, out of it.
+up-prod:
+	docker compose -f docker-compose.yml up --build -d
+	@docker image prune -f >/dev/null
 
 down:
 	docker compose down
@@ -47,6 +54,8 @@ replay-full:
 	curl -s -X POST -H "Content-Type: application/json" \
 	  --data @data/viral_post_dump.json http://localhost:8000/ingest/comments | jq .
 
+# Dev stack only (`make up`): it reads data/eval.json and writes to docs/, both
+# bind-mounted by docker-compose.override.yml, not present under `make up-prod`.
 eval:
 	$(DC_EXEC) worker python -m worker.eval data/eval.json
 

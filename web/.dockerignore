@@ -1,4 +1,18 @@
+# Build context is ./web.
+
+# Host node_modules is darwin/arm64 and ~540 MB; the image installs Linux binaries itself.
 node_modules
+# Build output from the host; the builder stage produces its own .next.
 .next
 out
+# TypeScript's incremental-build cache, host-specific.
+tsconfig.tsbuildinfo
+
+# Secrets: NEXT_PUBLIC_API_URL arrives at runtime (entrypoint.sh); no .env is read.
+.env
+.env.*
+*.pem
+
+# Logs.
 npm-debug.log*
+*.log

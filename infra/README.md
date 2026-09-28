@@ -383,11 +383,11 @@ infrastructure.
 - **arq is still the queue.** SQS and its DLQ exist, the worker role can use
   them, and `SQS_QUEUE_URL` is already in the task environment, but nothing
   reads it.
-- **The web image builds at container start.** `next build` bakes
-  `NEXT_PUBLIC_API_URL` into the browser bundle, and building per environment
-  would break "one image, promoted". The fix is a production Dockerfile stage
-  plus a runtime config endpoint. Until then, first boot takes about two
-  minutes.
+- **The pinned image tag predates the runtime images (D33).** Images built
+  from `8d183a3` run the dev commands (`next dev` for web). The web task no
+  longer overrides its command, so bumping `image_tag` to a newer build is
+  all it takes to switch to the runtime images; the web health-check window
+  and ALB grace period can then come down from 300 s / 420 s.
 - **HTTP only.** HTTPS needs a domain and an ACM certificate. Route 53 and WAF
   come in Phase 5.
 - **No autoscaling or alarms.** Those belong to the observability module, and

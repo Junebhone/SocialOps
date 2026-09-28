@@ -1,7 +1,27 @@
-__pycache__/
-*.pyc
-.pytest_cache/
-.mypy_cache/
-.ruff_cache/
-*.egg-info/
-.venv/
+# Build context is ./api. The runtime stage COPYs only app/, alembic/ and
+# alembic.ini; the dev stage copies the whole tree (tests included) so pytest,
+# ruff and mypy can run in the container. Patterns use **/ because a bare
+# `__pycache__/` only matches at the context root, not under app/.
+
+# Secrets: .env is passed at runtime by compose's env_file, never baked into a layer.
+**/.env
+**/.env.*
+**/*.pem
+**/*.key
+
+# Host virtualenvs are the wrong platform; the image builds its own in /opt/venv.
+**/.venv/
+**/venv/
+
+# Bytecode and tool caches: regenerated on demand, host-specific.
+**/__pycache__/
+**/*.pyc
+**/.pytest_cache/
+**/.mypy_cache/
+**/.ruff_cache/
+**/*.egg-info/
+
+# Empty compose mount points and local runtime output; data and uploads are volumes.
+data/
+storage/
+**/*.log

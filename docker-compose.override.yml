@@ -1,0 +1,54 @@
+# Local development. `docker compose` merges this over docker-compose.yml
+# automatically; the VM skips it with `-f docker-compose.yml` (make up-prod).
+#
+# What changes for dev (D33): the `dev` build targets, which carry pytest, ruff
+# and mypy; source bind mounts with hot reload; ./storage on the host instead of
+# the uploads volume so you can see what was uploaded; and Postgres and Redis
+# published on the host for psql / redis-cli. Mounts replace the base file's
+# entry for the same container path.
+
+services:
+  postgres:
+    ports:
+      - "${POSTGRES_PORT:-5432}:5432"
+
+  redis:
+    ports:
+      - "${REDIS_PORT:-6379}:6379"
+
+  api:
+    build:
+      target: dev
+    command: uvicorn app.main:app --host 0.0.0.0 --port 8000 --reload
+    volumes:
+      - ./api:/app
+      - ./data:/app/data
+      - ./storage:/app/storage
+
+  worker:
+    build:
+      target: dev
+    command: arq worker.main.WorkerSettings
+    volumes:
+      - ./worker:/app
+      # Dev hot-reload for the shared models; the image already contains a copy.
+      - ./api/app:/opt/api/app:ro
+      - ./data:/app/data
+      - ./storage:/app/storage
+      # `make eval` appends its result row here (D5).
+      - ./docs:/app/docs
+
+  web:
+    build:
+      target: dev
+    command: npm run dev -- --hostname 0.0.0.0 --port 3000
+    environment:
+      WATCHPACK_POLLING: "true"
+    volumes:
+      - ./web:/app
+      - /app/node_modules
+      - /app/.next
+    healthcheck:
+      # `next dev` compiles a route on first request, and the first compile of
+      # the Inbox is slow enough to fail a tighter window on a cold container.
+      start_period: 90s

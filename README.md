@@ -170,6 +170,22 @@ docker compose ps                          # five containers, all five (healthy)
 curl -s localhost:8000/health/ready        # {"status":"ok","database":true,"redis":true}
 ```
 
+`make up` is the **dev** stack. Compose merges `docker-compose.override.yml`, which adds source
+mounts, hot reload and the `dev` image targets that carry pytest/ruff/mypy. On the VM, or to run
+exactly what ECS runs, use the production-shaped stack instead
+([D33](docs/DECISIONS.md)):
+
+```bash
+make up-prod     # docker compose -f docker-compose.yml up --build -d — runtime images, no mounts
+make migrate
+make seed
+```
+
+Postgres and Redis are not published on the host in this mode. Ollama stays on the host in both
+modes. On a **Linux** host it must listen beyond loopback so the containers can reach it over the
+Docker bridge: add `Environment="OLLAMA_HOST=0.0.0.0:11434"` via `sudo systemctl edit ollama`,
+and keep 11434 closed in the security group ([D34](docs/DECISIONS.md)).
+
 Use **`/health/ready`**, not `/health`. Liveness answers "is the process up" and touches nothing —
 it stays green in front of a stopped Postgres, which is exactly how a full disk once presented as
 four healthy services and every endpoint returning 500 ([D28](docs/DECISIONS.md)). Readiness pings
@@ -538,8 +554,8 @@ comment for each environment from CI.
 | --- | --- | --- |
 | `web` | 3000 | Next.js 15 App Router, Tailwind v4, shadcn/ui |
 | `api` | 8000 | FastAPI, stateless; `/health` and `/docs` |
-| `postgres` | 5432 | Postgres 16 |
-| `redis` | 6379 | Redis 7, arq queue |
+| `postgres` | 5432 | Postgres 16; published on the host by `make up` only |
+| `redis` | 6379 | Redis 7, arq queue; published on the host by `make up` only |
 | `worker` | — | arq worker; no published port |
 
 Ollama runs on the **host**, not in Compose — the containers reach it at

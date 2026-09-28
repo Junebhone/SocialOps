@@ -147,7 +147,8 @@ decision. Do **not** add a durable-execution layer (Temporal, DBOS, Prefect, Res
 
 ## Commands
 ```
-make up        # docker compose up --build
+make up        # docker compose up --build (dev: merges docker-compose.override.yml)
+make up-prod   # runtime images only, no source mounts — what the VM runs (D33)
 make down
 make migrate   # alembic upgrade head
 make seed      # python data/seed.py
