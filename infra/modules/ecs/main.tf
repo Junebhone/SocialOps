@@ -1,24 +1,20 @@
 # ECS on Fargate: one cluster, three long-running services, and a one-off
 # migrate task.
 #
-# The images are the Phase 1 Dockerfiles, unchanged — "same images" is the
-# whole point of D2. Their default commands are the dev ones (uvicorn
-# --reload, next dev), so the task definitions override the command where that
-# matters and nothing else:
+# The images are the Phase 1 Dockerfiles — "same images" is the whole point of
+# D2. CI builds their default (last) stage, which is the lean runtime image
+# (D33), so the task definitions override the command only where ECS needs
+# something compose does not:
 #
-#   api     uvicorn without --reload. One process per task; scale by adding
-#           tasks, which the stateless API (hard rule #2) allows.
+#   api     uvicorn with --proxy-headers, because only the ALB reaches it.
+#           One process per task; scale by adding tasks (hard rule #2).
 #   worker  the image's own `arq worker.main.WorkerSettings`.
-#   web     `next build && next start`, run at container start. See below.
+#   web     the image's own entrypoint and `node server.js`. The image is built
+#           with a placeholder API URL and web/entrypoint.sh writes this task's
+#           NEXT_PUBLIC_API_URL into the bundle at start, so one image is still
+#           promoted between environments without a build at boot.
 #   migrate `alembic upgrade head`, run by hand with `aws ecs run-task` before
 #           the api and worker start against a new database (infra/README.md).
-#
-# Why web builds at start: NEXT_PUBLIC_API_URL is inlined into the browser
-# bundle by `next build`, so building in CI would bake one environment's ALB
-# address into an image that is supposed to be promoted between environments.
-# Building at start keeps one image for dev and staging at the cost of a slow
-# first boot (about two minutes). A production Dockerfile stage with a runtime
-# config endpoint is the proper fix and is listed in infra/README.md.
 
 data "aws_region" "current" {}
 
@@ -177,12 +173,14 @@ resource "aws_ecs_task_definition" "web" {
     name      = "web"
     image     = var.images.web
     essential = true
-    command = [
-      "sh", "-c",
-      "npm run build && exec npm run start -- --hostname 0.0.0.0 --port ${var.web_port}",
-    ]
-    portMappings     = [{ containerPort = var.web_port, protocol = "tcp" }]
-    environment      = local.web_env
+    # No command: the image's entrypoint and CMD. The standalone server binds
+    # to HOSTNAME:PORT. HOSTNAME is set explicitly because the platform may set
+    # it to the task's own hostname, and the health check probes 127.0.0.1.
+    portMappings = [{ containerPort = var.web_port, protocol = "tcp" }]
+    environment = concat(local.web_env, [
+      { name = "PORT", value = tostring(var.web_port) },
+      { name = "HOSTNAME", value = "0.0.0.0" },
+    ])
     logConfiguration = local.log_config["web"]
     stopTimeout      = 30
 
@@ -191,7 +189,10 @@ resource "aws_ecs_task_definition" "web" {
       interval = 30
       timeout  = 10
       retries  = 5
-      # The build runs inside this window. 300 is the ECS maximum.
+      # The runtime image serves in seconds. The wide window is for images
+      # built before D33 (e.g. the tag pinned in env/*.tfvars today), whose
+      # default command is `next dev` and compiles /inbox on first request.
+      # 300 is the ECS maximum.
       startPeriod = 300
     }
   }])
@@ -242,7 +243,8 @@ locals {
       task_definition = aws_ecs_task_definition.web.arn
       security_group  = var.task_security_group_ids.web
       load_balancer   = { target_group_arn = var.target_group_arns.web, port = var.web_port }
-      # The ALB must not kill the task while `next build` is still running.
+      # Matches the health check's startPeriod above: covers a pre-D33 image
+      # compiling on first request. Lower both once the pinned tag is newer.
       grace_seconds = 420
     }
   }

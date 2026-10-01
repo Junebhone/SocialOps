@@ -991,6 +991,74 @@ The runbook is [infra/README.md](../infra/README.md).
 
 ---
 
+## D33 — Images are multi-stage; the runtime stage is the default, dev is opt-in · `SETTLED`
+
+**Decision.** Each Dockerfile has a dependency stage, a `dev` stage and a `runtime` stage, and
+`runtime` is last, so it is what a plain `docker build` produces. `runtime` holds a virtualenv
+(or Next's standalone server), the source the process imports, and nothing else, and it runs as
+a non-root user. `docker-compose.yml` describes that production-shaped stack: named volumes,
+one user-defined network, and only the api and web ports published. `docker-compose.override.yml`
+switches to the `dev` targets, bind mounts and hot reload, and Compose merges it automatically.
+`make up`, `make test` and CI are unchanged. The VM runs `make up-prod`, which passes
+`-f docker-compose.yml` so the override is skipped.
+
+**Why.** Before this, the one image was the dev image. CI pushed it to ECR, so ECS was running
+the image that has pytest and mypy installed and defaults to `uvicorn --reload` and `next dev`.
+The task definitions had to override commands to cover for that, and web ran `next build` on
+every boot, which took about two minutes. With the stages split, the dev and production images
+come from one Dockerfile and can't drift apart, and the image CI builds is the one that should
+run. Measured on arm64: api 432 → 275 MB, worker 528 → 423 MB, web 993 → 246 MB.
+
+**Three things that are not obvious:**
+
+* **Web is built with a placeholder API URL.** `NEXT_PUBLIC_API_URL` is inlined into the
+  browser bundle at build time. `web/entrypoint.sh` rewrites the placeholder with the
+  container's value at start, so one image is still promoted between environments (D32)
+  without building at boot.
+* **The worker image now contains `data/trends.json`.** The ideation node reads it relative
+  to its module. Compose had been supplying it through the `./data` bind mount, and ECS has
+  no mounts, so ideation there would have run without trend signals and raised no error.
+* **Only runtime dependencies are installed from `pyproject.toml`, and the package itself is
+  not.** Source is on `PYTHONPATH`, as it was before. Installing the package would mean
+  putting a stub `app` package in site-packages. Every build now resolves dependencies from
+  scratch, and one did: SQLAlchemy 2.1 broke mypy. `sqlalchemy` is now capped at `<2.1`.
+
+**Secrets.** No stage `COPY`s `.env`, and every build context excludes it through
+`.dockerignore`. Compose passes it at runtime through `env_file`. The worker's context is the
+repo root, which had no `.dockerignore` until now (the old `worker/.dockerignore` was never
+read), so `.env`, `.git` and `web/node_modules` were all sent to the builder.
+
+**Touches:** `api/`, `worker/`, `web/` Dockerfiles and `.dockerignore` · `.dockerignore` ·
+`docker-compose*.yml` · `web/next.config.ts` · `infra/modules/ecs` (web no longer overrides
+its command) · `Makefile` (`up-prod`) · `README.md`.
+
+---
+
+## D34 — Ollama stays on the host, reached over the Docker bridge · `SETTLED`
+
+**Decision.** Compose has no Ollama service. The api and worker reach the host's Ollama at
+`http://host.docker.internal:11434`, which resolves through `extra_hosts:
+host.docker.internal:host-gateway`. That mapping works on Docker Desktop and on Linux.
+
+**Why.** A containerized Ollama on the VM would be a CPU-only image of several GB. The
+models would either be baked in (every rebuild re-ships the weights) or pulled into a volume
+on first start, which makes the first boot slow. It would also run in the same memory cgroup
+as Postgres. Milestone 2 already has Ollama installed natively on the VM with the models
+pulled and the residency variables set (D19), and that setup works. Keeping it there changes
+nothing that already runs, and the code already treats Ollama as an external endpoint
+(`OLLAMA_BASE_URL`, hard rule #1). Phase 4 replaces it with Bedrock through the same variable.
+
+**Consequence: on a Linux host, Ollama must listen on the bridge.** By default it binds
+`127.0.0.1`, and a container's traffic to the host-gateway address arrives on the Docker
+bridge interface, not on loopback. On the VM, set `OLLAMA_HOST=0.0.0.0:11434` in a systemd
+override (`sudo systemctl edit ollama`), then restart the service. The security group does not
+open 11434, so this exposes Ollama to the containers and not to the internet. Docker Desktop
+forwards `host.docker.internal` to the Mac's loopback, so macOS needs no change.
+
+**Touches:** `docker-compose.yml` (`extra_hosts`) · `README.md`.
+
+---
+
 ## Standing assumptions
 
 | # | Assumption | Revisit when |
