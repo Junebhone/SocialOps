@@ -1,0 +1,18 @@
+# Run the app from the images in the registry instead of building them.
+# Layered over the base file; nothing is built, so the laptop and the VM run
+# the exact same image (same digest):
+#
+#   docker compose -f docker-compose.yml -f docker-compose.registry.yml pull api worker web
+#   docker compose -f docker-compose.yml -f docker-compose.registry.yml up -d --no-build
+#
+# IMAGE_TAG picks the version (default v1). v1 is amd64 only, so an Apple
+# Silicon Mac needs DOCKER_DEFAULT_PLATFORM=linux/amd64 to run it (emulated).
+# v2 holds both amd64 and arm64, and each machine pulls its native one (D35).
+
+services:
+  api:
+    image: ${ECR_REGISTRY:-518668548718.dkr.ecr.us-east-2.amazonaws.com}/socialops-api:${IMAGE_TAG:-v1}
+  worker:
+    image: ${ECR_REGISTRY:-518668548718.dkr.ecr.us-east-2.amazonaws.com}/socialops-worker:${IMAGE_TAG:-v1}
+  web:
+    image: ${ECR_REGISTRY:-518668548718.dkr.ecr.us-east-2.amazonaws.com}/socialops-web:${IMAGE_TAG:-v1}
