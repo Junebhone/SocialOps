@@ -181,6 +181,16 @@ make migrate
 make seed
 ```
 
+To run the **registry** images instead of building (same digest on every machine,
+[D35](docs/DECISIONS.md)), log in to ECR and layer `docker-compose.registry.yml`:
+
+```bash
+aws ecr get-login-password --region us-east-2 | docker login --username AWS --password-stdin 518668548718.dkr.ecr.us-east-2.amazonaws.com
+# IMAGE_TAG defaults to v2 (multi-arch). v1 is amd64-only: on Apple Silicon it also needs DOCKER_DEFAULT_PLATFORM=linux/amd64
+docker compose -f docker-compose.yml -f docker-compose.registry.yml pull api worker web
+docker compose -f docker-compose.yml -f docker-compose.registry.yml up -d --no-build
+```
+
 Postgres and Redis are not published on the host in this mode. Ollama stays on the host in both
 modes. On a **Linux** host it must listen beyond loopback so the containers can reach it over the
 Docker bridge: add `Environment="OLLAMA_HOST=0.0.0.0:11434"` via `sudo systemctl edit ollama`,

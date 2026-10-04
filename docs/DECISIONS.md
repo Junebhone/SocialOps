@@ -1059,6 +1059,31 @@ forwards `host.docker.internal` to the Mac's loopback, so macOS needs no change.
 
 ---
 
+## D35 — Registry images: `v1` is amd64-only, `v2` is multi-arch · `SETTLED`
+
+**Decision.** The registry run uses `docker-compose.registry.yml`, layered over the base file. It
+gives each service an `image:` and nothing is built, so any machine running it runs the exact
+digest in ECR. `IMAGE_TAG` selects the version and defaults to `v2`. `v1` was built on the VM and
+contains only `linux/amd64`. `v2` was built from `main` with `docker buildx --platform
+linux/amd64,linux/arm64`: one tag and one index digest, with a native build per CPU underneath.
+
+**Why both.** The milestone's success measure is that the laptop and the VM run the same artifact
+byte for byte. With `v1`, that is literally true: an Apple Silicon laptop runs the amd64 image under
+emulation (`DOCKER_DEFAULT_PLATFORM=linux/amd64`), and the digests match exactly. It is slower,
+but identical. `v2` is how you would ship for real: each machine pulls the image built for its
+own CPU, at full speed, with no flags. The tag's index digest is identical everywhere, but the
+per-architecture images underneath are different bytes. Keeping `v1` unchanged also keeps the
+VM's running images and the team's `v1` screenshots valid.
+
+**Consequence.** The ECR repositories (`socialops-api`, `-worker`, `-web`) are mutable, so
+nothing enforces this; do not re-push an existing tag. A new build gets a new tag. CI still pushes to
+the Terraform-managed `socialops/*` repositories, which are immutable and amd64-only (D32);
+these hand-pushed repositories are the milestone's registry evidence.
+
+**Touches:** `docker-compose.registry.yml` · `README.md`.
+
+---
+
 ## Standing assumptions
 
 | # | Assumption | Revisit when |
