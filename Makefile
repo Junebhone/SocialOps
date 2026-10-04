@@ -1,4 +1,4 @@
-.PHONY: up up-prod down logs migrate seed test lint replay replay-full eval measure measure-full diagrams demo models models-light reset prune tf-check tf-init tf-plan tf-apply
+.PHONY: up up-prod ecr-login registry-up registry-down registry-digests down logs migrate seed test lint replay replay-full eval measure measure-full diagrams demo models models-light reset prune tf-check tf-init tf-plan tf-apply
 
 # `docker compose exec` allocates a TTY by default, which a CI runner does not
 # have. CI calls `make test DC_EXEC="docker compose exec -T"`; locally nothing
@@ -20,6 +20,32 @@ up:
 up-prod:
 	docker compose -f docker-compose.yml up --build -d
 	@docker image prune -f >/dev/null
+
+# --- Registry images (D35) ---------------------------------------------------
+# Pull and run the images in ECR instead of building them, so every machine
+# runs the same digest. IMAGE_TAG defaults to v2, multi-arch (native on Apple Silicon);
+# v1 is amd64-only. Exported so compose sees it, including under `sudo make`.
+ECR_REGISTRY ?= 518668548718.dkr.ecr.us-east-2.amazonaws.com
+IMAGE_TAG ?= v2
+export ECR_REGISTRY IMAGE_TAG
+REGISTRY_COMPOSE = docker compose -f docker-compose.yml -f docker-compose.registry.yml
+
+# Needs the AWS CLI, so run it on the laptop. The VM has no AWS CLI: pipe the
+# token over ssh instead (README, "Run it").
+ecr-login:
+	aws ecr get-login-password --region us-east-2 | docker login --username AWS --password-stdin $(ECR_REGISTRY)
+
+registry-up:
+	$(REGISTRY_COMPOSE) pull api worker web
+	$(REGISTRY_COMPOSE) up -d --no-build
+	$(REGISTRY_COMPOSE) ps
+
+registry-down:
+	$(REGISTRY_COMPOSE) down
+
+# The fingerprint to compare across machines: identical output = same artifact.
+registry-digests:
+	@for s in api worker web; do docker image inspect --format "$$s  {{index .RepoDigests 0}}  ({{.Architecture}})" $(ECR_REGISTRY)/socialops-$$s:$(IMAGE_TAG); done
 
 down:
 	docker compose down

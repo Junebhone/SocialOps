@@ -186,7 +186,7 @@ To run the **registry** images instead of building (same digest on every machine
 
 ```bash
 aws ecr get-login-password --region us-east-2 | docker login --username AWS --password-stdin 518668548718.dkr.ecr.us-east-2.amazonaws.com
-export IMAGE_TAG=v2   # multi-arch; v1 (the default) is amd64-only — on Apple Silicon also export DOCKER_DEFAULT_PLATFORM=linux/amd64
+# IMAGE_TAG defaults to v2 (multi-arch). v1 is amd64-only: on Apple Silicon it also needs DOCKER_DEFAULT_PLATFORM=linux/amd64
 docker compose -f docker-compose.yml -f docker-compose.registry.yml pull api worker web
 docker compose -f docker-compose.yml -f docker-compose.registry.yml up -d --no-build
 ```

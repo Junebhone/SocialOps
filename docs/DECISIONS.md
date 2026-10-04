@@ -1063,7 +1063,7 @@ forwards `host.docker.internal` to the Mac's loopback, so macOS needs no change.
 
 **Decision.** The registry run uses `docker-compose.registry.yml`, layered over the base file. It
 gives each service an `image:` and nothing is built, so any machine running it runs the exact
-digest in ECR. `IMAGE_TAG` selects the version and defaults to `v1`. `v1` was built on the VM and
+digest in ECR. `IMAGE_TAG` selects the version and defaults to `v2`. `v1` was built on the VM and
 contains only `linux/amd64`. `v2` was built from `main` with `docker buildx --platform
 linux/amd64,linux/arm64`: one tag and one index digest, with a native build per CPU underneath.
 
