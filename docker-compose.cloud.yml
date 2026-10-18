@@ -1,0 +1,45 @@
+services:
+  # Keep the old Postgres definition for rollback, but do not start it
+  # in the cloud runtime.
+  postgres:
+    profiles: ["local-only"]
+
+  api:
+    env_file: !reset []
+    environment:
+      DATABASE_URL: ${DATABASE_URL:?DATABASE_URL must be exported}
+      REDIS_URL: redis://redis:6379/0
+      STORAGE_BACKEND: s3
+      STORAGE_ROOT: socialops-uploads-518668548718
+      AWS_REGION: us-east-2
+      LLM_PROVIDER: ollama
+      LLM_MODEL_FAST: qwen3:0.6b
+      LLM_MODEL_TEXT: qwen2.5vl:3b
+      LLM_MODEL_VISION: qwen2.5vl:3b
+      OLLAMA_BASE_URL: http://host.docker.internal:11434
+    volumes: !reset []
+    depends_on: !override
+      redis:
+        condition: service_healthy
+
+  worker:
+    env_file: !reset []
+    environment:
+      DATABASE_URL: ${DATABASE_URL:?DATABASE_URL must be exported}
+      REDIS_URL: redis://redis:6379/0
+      STORAGE_BACKEND: s3
+      STORAGE_ROOT: socialops-uploads-518668548718
+      AWS_REGION: us-east-2
+      LLM_PROVIDER: ollama
+      LLM_MODEL_FAST: qwen3:0.6b
+      LLM_MODEL_TEXT: qwen2.5vl:3b
+      LLM_MODEL_VISION: qwen2.5vl:3b
+      OLLAMA_BASE_URL: http://host.docker.internal:11434
+    volumes: !reset []
+    depends_on: !override
+      redis:
+        condition: service_healthy
+
+  web:
+    environment:
+      NEXT_PUBLIC_API_URL: ${NEXT_PUBLIC_API_URL:?NEXT_PUBLIC_API_URL must be exported}
