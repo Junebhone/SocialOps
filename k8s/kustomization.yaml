@@ -1,0 +1,37 @@
+# Everything the cluster runs, in apply order. Build or dry-run it with:
+#   kubectl kustomize k8s/                       # render
+#   kubectl apply -k k8s/ --dry-run=client       # validate
+#   kubectl apply -k k8s/                        # apply (after the Secret exists)
+#
+# The Secret socialops-db is deliberately NOT here. It is created by command from
+# Secrets Manager (see k8s/README.md), so no secret value ever lands in git.
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+namespace: socialops
+
+resources:
+  - namespace.yaml
+  - serviceaccount.yaml
+  - configmap.yaml
+  - redis.yaml
+  - api-deployment.yaml
+  - api-service.yaml
+  - worker-deployment.yaml
+  - web-deployment.yaml
+  - web-service.yaml
+  - ingress-api.yaml
+  - ingress-web.yaml
+  - hpa-api.yaml
+  - pdb.yaml
+
+# One place to move every image. Before recording, pin by digest instead of tag:
+#   aws ecr describe-images --region us-east-2 --repository-name socialops-api \
+#     --image-ids imageTag=v2 --query 'imageDetails[0].imageDigest' --output text
+# then replace `newTag: v2` with `digest: sha256:...` for each image.
+images:
+  - name: 518668548718.dkr.ecr.us-east-2.amazonaws.com/socialops-api
+    newTag: v2
+  - name: 518668548718.dkr.ecr.us-east-2.amazonaws.com/socialops-worker
+    newTag: v2
+  - name: 518668548718.dkr.ecr.us-east-2.amazonaws.com/socialops-web
+    newTag: v2

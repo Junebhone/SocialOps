@@ -390,3 +390,9 @@ class WorkerSettings:
     # one Ollama call — runs at a time, matching what Ollama already enforces
     # anyway.
     max_jobs = 1
+    # How often arq refreshes its heartbeat key in Redis; the key expires one
+    # second after that. `arq --check` (the Kubernetes liveness probe and the
+    # compose healthcheck) only fails once the key is gone, so arq's default of
+    # 3600 meant a wedged worker looked alive for up to an hour. The heartbeat is
+    # written every poll loop, including while a job runs, so 30s is safe.
+    health_check_interval = 30

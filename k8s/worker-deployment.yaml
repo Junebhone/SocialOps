@@ -1,0 +1,40 @@
+# arq worker. No port, so no Service and no readiness probe: nothing routes
+# traffic to it. One replica: arq jobs are keyed, and one slot matches what the
+# model backend can serve (max_jobs = 1 in worker/main.py).
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: worker
+  labels: {app: worker}
+spec:
+  replicas: 1
+  selector:
+    matchLabels: {app: worker}
+  template:
+    metadata:
+      labels: {app: worker}
+    spec:
+      serviceAccountName: socialops-app
+      terminationGracePeriodSeconds: 60
+      containers:
+        - name: worker
+          image: 518668548718.dkr.ecr.us-east-2.amazonaws.com/socialops-worker
+          envFrom:
+            - configMapRef: {name: socialops-config}
+          env:
+            - name: DATABASE_URL
+              valueFrom:
+                secretKeyRef: {name: socialops-db, key: DATABASE_URL}
+          resources:
+            requests: {cpu: 200m, memory: 256Mi}
+            limits: {memory: 768Mi}
+          # arq writes a heartbeat to Redis; --check exits non-zero when it is
+          # stale. Same check as docker-compose.yml. Honest limit: during a long
+          # Redis outage this fails too and the worker restarts.
+          livenessProbe:
+            exec:
+              command: ["arq", "--check", "worker.main.WorkerSettings"]
+            initialDelaySeconds: 60
+            periodSeconds: 30
+            timeoutSeconds: 15
+            failureThreshold: 3
