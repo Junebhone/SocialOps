@@ -1,0 +1,66 @@
+# FastAPI. Two replicas on different nodes, three probes that answer three
+# different questions (see k8s/README.md, "Probe design").
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: api
+  labels: {app: api}
+spec:
+  replicas: 2
+  strategy:
+    type: RollingUpdate
+    rollingUpdate: {maxUnavailable: 0, maxSurge: 1}
+  selector:
+    matchLabels: {app: api}
+  template:
+    metadata:
+      labels: {app: api}
+    spec:
+      serviceAccountName: socialops-app
+      terminationGracePeriodSeconds: 30
+      topologySpreadConstraints:
+        - maxSkew: 1
+          topologyKey: kubernetes.io/hostname
+          whenUnsatisfiable: ScheduleAnyway
+          labelSelector:
+            matchLabels: {app: api}
+      containers:
+        - name: api
+          image: 518668548718.dkr.ecr.us-east-2.amazonaws.com/socialops-api
+          ports:
+            - {name: http, containerPort: 8000}
+          envFrom:
+            - configMapRef: {name: socialops-config}
+          env:
+            - name: DATABASE_URL
+              valueFrom:
+                secretKeyRef: {name: socialops-db, key: DATABASE_URL}
+          resources:
+            # CPU requests are what the HPA's 30% target is measured against.
+            requests: {cpu: 200m, memory: 256Mi}
+            limits: {memory: 512Mi}
+          # Has the process finished booting? Holds off the other two probes
+          # for up to 30 x 5s = 150s, so a slow start is not mistaken for a crash.
+          startupProbe:
+            httpGet: {path: /health, port: http}
+            periodSeconds: 5
+            failureThreshold: 30
+          # Is the process alive? /health touches NOTHING external, on purpose:
+          # if it checked the database, an RDS blip would restart every pod.
+          livenessProbe:
+            httpGet: {path: /health, port: http}
+            periodSeconds: 10
+            timeoutSeconds: 3
+            failureThreshold: 3
+          # Can it serve a real request? /health/ready pings Postgres and Redis
+          # and returns 503 if either is down. Failing removes the pod from the
+          # Service and the ALB, with no restart; it rejoins by itself.
+          readinessProbe:
+            httpGet: {path: /health/ready, port: http}
+            periodSeconds: 5
+            timeoutSeconds: 3
+            failureThreshold: 2
+          lifecycle:
+            # Keep serving while the ALB deregisters this pod, before SIGTERM.
+            preStop:
+              exec: {command: ["sleep", "10"]}

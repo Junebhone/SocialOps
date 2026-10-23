@@ -1,0 +1,30 @@
+# Member 3 owns this file's values: replace socialops.example.com with the real
+# subdomain and REPLACE_WITH_ACM_CERT_ARN with the Issued certificate's ARN.
+# Both Ingresses share group.name socialops, so they become ONE ALB.
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: api
+  annotations:
+    alb.ingress.kubernetes.io/group.name: socialops
+    alb.ingress.kubernetes.io/scheme: internet-facing
+    alb.ingress.kubernetes.io/target-type: ip
+    alb.ingress.kubernetes.io/listen-ports: '[{"HTTP": 80}, {"HTTPS": 443}]'
+    alb.ingress.kubernetes.io/ssl-redirect: "443"
+    alb.ingress.kubernetes.io/certificate-arn: REPLACE_WITH_ACM_CERT_ARN
+    # The ALB's own health check: a second layer behind the readiness probe.
+    alb.ingress.kubernetes.io/healthcheck-path: /health/ready
+    # Pods already wait 10s in preStop, so 30s of draining is plenty.
+    alb.ingress.kubernetes.io/target-group-attributes: deregistration_delay.timeout_seconds=30
+spec:
+  ingressClassName: alb
+  rules:
+    - host: api.socialops.example.com
+      http:
+        paths:
+          - path: /
+            pathType: Prefix
+            backend:
+              service:
+                name: api
+                port: {number: 8000}
