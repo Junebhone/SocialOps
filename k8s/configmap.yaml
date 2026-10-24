@@ -20,4 +20,4 @@ data:
   # The browser's address for the api. web/entrypoint.sh writes it into the
   # bundle at container start, so no image rebuild is needed. Member 3: set the
   # real hostname (search the repo for socialops.example.com).
-  NEXT_PUBLIC_API_URL: "https://api.socialops.example.com"
+  NEXT_PUBLIC_API_URL: "https://api.socialops.website"
