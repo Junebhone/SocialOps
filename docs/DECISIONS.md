@@ -1084,6 +1084,30 @@ these hand-pushed repositories are the milestone's registry evidence.
 
 ---
 
+## D36 — Milestone 5 runs on EKS, and the pods call Bedrock · `SETTLED`
+
+**Decision.** api, web and worker run as Deployments on EKS (`socialops-eks`, us-east-2), the AWS
+stand-in for the brief's GKE. The cluster is `k8s/cluster/eksctl.yaml`: two t3.medium x86 nodes in
+the default VPC's public subnets, in the same VPC as RDS, so there is no NAT gateway and no peering.
+Pods get AWS access through IRSA (role `socialops-app-irsa`, policy `k8s/iam/pod-runtime.json`),
+never key files. The worker calls Bedrock (`LLM_PROVIDER=bedrock`): Nova Micro for `fast`, Nova Lite
+for `standard` and `vision`, through the `us.` cross-region inference profiles.
+
+**Why.** Pods cannot reach the Ollama on a laptop, and Bedrock is the provider ADR-0002 already
+planned for. Because of the tier abstraction (D6) the switch is one `case` in `worker/llm.py` and
+three ConfigMap values; no agent or prompt changed. Nova is the cheapest vision-capable pair in
+the region, and the cluster lives for days, not months. The Ollama pair is still what `make eval`
+verified (D20); Bedrock quality has not been measured against the eval set.
+
+**Consequence.** The cluster is billed by the hour (about $6 a day), so it is created for the demo
+and deleted after it; the order is in `k8s/README.md`. Images are pinned by digest in
+`k8s/kustomization.yaml`. The worker is `v3`, which carries the Bedrock code and the 30 s arq
+heartbeat; api and web stay on `v2`.
+
+**Touches:** `k8s/` · `worker/worker/llm.py` · `worker/worker/config.py`.
+
+---
+
 ## Standing assumptions
 
 | # | Assumption | Revisit when |
