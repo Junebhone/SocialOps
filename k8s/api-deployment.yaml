@@ -21,7 +21,11 @@ spec:
       topologySpreadConstraints:
         - maxSkew: 1
           topologyKey: kubernetes.io/hostname
-          whenUnsatisfiable: ScheduleAnyway
+          # Hard, not ScheduleAnyway: a rollout once put both replicas on one node,
+          # which a single drain or node loss takes to zero. maxSkew 1 still fits 3-4.
+          whenUnsatisfiable: DoNotSchedule
+          # Count only this revision's pods, or a rollout skews away from the old ones.
+          matchLabelKeys: [pod-template-hash]
           labelSelector:
             matchLabels: {app: api}
       containers:
