@@ -1,0 +1,52 @@
+# Milestone 5, Module 01. The cluster, its nodes, who may use it, and the pods' AWS
+# identities. Same VPC as RDS socialops-db, so no NAT gateway and no peering.
+# Create the pod policy first (iam.serviceAccounts attaches it by ARN):
+#   aws iam create-policy --policy-name socialops-pod-runtime --policy-document file://k8s/iam/pod-runtime.json
+#   eksctl create cluster -f k8s/cluster/eksctl.yaml      # 15 to 20 minutes
+# Teardown: delete the Ingresses first (k8s/README.md), then
+#   eksctl delete cluster -f k8s/cluster/eksctl.yaml
+apiVersion: eksctl.io/v1alpha5
+kind: ClusterConfig
+metadata:
+  name: socialops-eks
+  region: us-east-2
+  # Kubernetes version left unset: eksctl picks a supported one.
+
+vpc:
+  id: vpc-0b1aaa0783cc57a44
+  subnets:
+    # Default-VPC public subnets only. Never the M4 private subnets.
+    public:
+      us-east-2a: {id: subnet-05177c280220c291b}
+      us-east-2b: {id: subnet-0105402ce73e5e616}
+
+# The creator (who runs eksctl) gets cluster admin by default; teammates who apply
+# manifests need their own entry.
+accessConfig:
+  authenticationMode: API_AND_CONFIG_MAP
+  accessEntries:
+    - principalARN: arn:aws:iam::518668548718:user/zainab
+      accessPolicies:
+        - policyARN: arn:aws:eks::aws:cluster-access-policy/AmazonEKSClusterAdminPolicy
+          accessScope: {type: cluster}
+
+iam:
+  withOIDC: true
+  serviceAccounts:
+    # Role only: k8s/serviceaccount.yaml owns the ServiceAccount and points at this name.
+    - metadata: {name: socialops-app, namespace: socialops}
+      roleName: socialops-app-irsa
+      roleOnly: true
+      attachPolicyARNs:
+        - arn:aws:iam::518668548718:policy/socialops-pod-runtime
+    - metadata: {name: aws-load-balancer-controller, namespace: kube-system}
+      wellKnownPolicies: {awsLoadBalancerController: true}
+
+managedNodeGroups:
+  # x86 on purpose: the v2 images are amd64. maxSize 3 caps a runaway scale.
+  - name: socialops-ng
+    instanceType: t3.medium
+    desiredCapacity: 2
+    minSize: 2
+    maxSize: 3
+    volumeSize: 20
