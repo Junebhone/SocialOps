@@ -24,6 +24,8 @@ spec:
           whenUnsatisfiable: DoNotSchedule
           # Count only this revision's pods, or a rollout skews away from the old ones.
           matchLabelKeys: [pod-template-hash]
+          # A cordoned or dead node is not a spread target, so its pods can move.
+          nodeTaintsPolicy: Honor
           labelSelector:
             matchLabels: {app: web}
       containers:
