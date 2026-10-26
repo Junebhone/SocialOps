@@ -83,6 +83,13 @@ outage does restart the worker.
     kubectl -n socialops exec $POD -- python -c "import urllib.request as u;print(u.urlopen('http://127.0.0.1:8000/health').read().decode())"
     kubectl -n socialops exec $POD -- python -c "import urllib.request as u;print(u.urlopen('http://127.0.0.1:8000/health/ready').read().decode())"
 
+## After a drain test
+
+Uncordoning does not move pods back, so after draining both nodes every replica sits on one node.
+Spread them again before the next take:
+
+    kubectl -n socialops rollout restart deploy/api deploy/web
+
 ## Teardown (right after recording)
 
     kubectl delete ingress --all -n socialops    # removes the ALB; wait until it is gone

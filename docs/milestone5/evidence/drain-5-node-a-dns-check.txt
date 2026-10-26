@@ -1,0 +1,19 @@
+node/ip-172-31-0-25.us-east-2.compute.internal cordoned
+WARNING: ignoring DaemonSet-managed Pods: kube-system/aws-node-57dnh, kube-system/kube-proxy-n2kc2
+evicting pod socialops/worker-74bbd89667-wg4t4
+evicting pod kube-system/metrics-server-686df459d5-rgd9s
+evicting pod socialops/redis-7c99566d89-nksqn
+evicting pod kube-system/aws-load-balancer-controller-76c8b579d7-sxhpt
+evicting pod kube-system/aws-load-balancer-controller-76c8b579d7-gksdj
+evicting pod socialops/api-747c87fb75-txw5x
+evicting pod kube-system/coredns-6ffbf86fcd-htt57
+evicting pod socialops/web-67bdb4f467-g26z2
+pod/worker-74bbd89667-wg4t4 evicted
+pod/aws-load-balancer-controller-76c8b579d7-sxhpt evicted
+pod/aws-load-balancer-controller-76c8b579d7-gksdj evicted
+pod/redis-7c99566d89-nksqn evicted
+pod/metrics-server-686df459d5-rgd9s evicted
+pod/coredns-6ffbf86fcd-htt57 evicted
+pod/web-67bdb4f467-g26z2 evicted
+pod/api-747c87fb75-txw5x evicted
+node/ip-172-31-0-25.us-east-2.compute.internal drained
