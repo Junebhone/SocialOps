@@ -25,8 +25,10 @@ from pydantic_ai import Agent, BinaryContent, ModelRequestContext, PromptedOutpu
 from pydantic_ai.capabilities import AbstractCapability
 from pydantic_ai.messages import ModelResponse, TextPart
 from pydantic_ai.models import Model
+from pydantic_ai.models.bedrock import BedrockConverseModel
 from pydantic_ai.models.ollama import OllamaModel
 from pydantic_ai.models.openai import OpenAIChatModelSettings
+from pydantic_ai.providers.bedrock import BedrockProvider
 from pydantic_ai.providers.ollama import OllamaProvider
 from pydantic_ai.settings import ModelSettings
 
@@ -130,11 +132,10 @@ def _build_model(settings: Settings, tier: Tier) -> Model:
                 provider=OllamaProvider(base_url=settings.ollama_openai_base_url),
             )
         case "bedrock":
-            # Phase 4. Adding it here is the whole migration for this module —
-            # ADR-0002's "one-line env change" is only true because the tier
-            # abstraction (D6) means no agent has to change.
-            raise NotImplementedError(
-                "LLM_PROVIDER=bedrock is a Phase 4 target; only ollama is wired in Phase 1."
+            # ADR-0002's "one-line env change": the tier abstraction (D6) means no
+            # agent changes. No keys here — boto3 finds the pod's IRSA token.
+            return BedrockConverseModel(
+                model_name, provider=BedrockProvider(region_name=settings.aws_region)
             )
         case _ as unreachable:  # pragma: no cover - mypy exhaustiveness guard
             assert_never(unreachable)
