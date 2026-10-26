@@ -1,30 +1,32 @@
-# Written analysis: the 5xx a missing PodDisruptionBudget causes
+# Written Analysis: Missing PodDisruptionBudgets and Intermittent 5xx Errors
 
-*Draft for Module 06 (Member 5: rewrite in your own words, then export to PDF). Numbers are from
+SocialOps · Milestone 5 · EDS 6348 Group 5 · Amazon EKS socialops-eks, us-east-2
+
+*Module 06. Submitted as `M5_Written_Analysis_PDB_v2.pdf`; this is the same text. Numbers are from
 `docs/milestone5/evidence/`, measured 2026-10-25.*
 
-**What a missing PodDisruptionBudget does.** A PodDisruptionBudget (PDB) tells Kubernetes how many
-replicas must stay up during a voluntary disruption: a node drain for an EKS upgrade, a node-group
-rolling update, a scale-down. Without one, Kubernetes evicts every pod on the node at once. If both
-api replicas are on that node, the Service has no ready endpoints until the replacements pass
-readiness. The ALB also keeps a terminating pod as a target until deregistration finishes, so some
-requests reach a pod that is already gone. Users see a few seconds of intermittent 502 and 503
-responses, not a clean outage, and `/health` looks fine again by the time anyone checks, which makes
-it hard to diagnose.
+## The intermittent 5xx failure a missing PDB causes
 
-**What our configuration did.** api and web run two replicas with a hard topology spread (one per
-node, `DoNotSchedule`), `maxUnavailable: 0`, a 10 second preStop sleep, and a PDB with
-`minAvailable: 1`. We drained node A and then node B with a curl loop running against
-`https://api.socialops.website/health`. Kubernetes refused the last eviction on node B
-("Cannot evict pod as it would violate the pod's disruption budget"), so one api pod kept serving
-and the app never went to zero. It was not perfectly clean: 337 of 360 requests returned 200, with
-22 timeouts and one 503, nearly all while node A drained. A second run with the ALB IP pinned
-failed the same way, so the cause is not DNS. It is the ALB still sending to the evicted pod during
-deregistration. The PDB turns a full outage into a short blip; it does not remove the blip.
+A node drain, node-group update or scale-down is a **voluntary disruption**. Without a
+PodDisruptionBudget, Kubernetes may evict every pod on a node at once. If both api replicas are
+there, the Service has no ready endpoints until replacements pass readiness, while the load balancer
+still routes requests to pods that are shutting down. Users see **scattered 502 and 503 responses
+for a few seconds**, then the pods look healthy again, which is why it is intermittent and hard
+to diagnose.
 
-**Limits.** A PDB only guards evictions. `kubectl delete pod` and a node crash are not covered, which
-is why we also run two or more replicas on different nodes. (Deleting an api pod directly under the
-same curl loop gave 120 of 120 successes, because the other replica kept serving.) The worker and
-redis are single replicas on purpose: a PDB on one pod would block every drain forever, and redis
-loses queued jobs when it restarts. Our own test showed the cost of that: draining the second node
-evicted redis, and the api's readiness check, which needs redis, went red until redis came back.
+## What we saw, and why our configuration prevented the outage
+
+api and web run two replicas, one per node (a hard topology spread), with maxUnavailable: 0, a
+10-second preStop pause, a readiness probe on /health/ready, and a PDB with minAvailable: 1. On 25
+October we drained both nodes while a curl loop called the api every half second. The PDB held:
+Kubernetes refused to evict the last api and web pods ("Cannot evict pod as it would violate
+the pod's disruption budget"), so the app never went to zero. We did see the intermittent
+failure in a small form: **337 of 360** requests returned 200, with 22 timeouts and one 503 while
+the load balancer deregistered the evicted pod. Without the PDB the last api pod would have been
+evicted too. The PDB turns an outage into a short blip; it does not remove the blip.
+
+## Limits
+
+A PDB only guards evictions, not **kubectl delete pod** or a node crash; two replicas on
+different nodes cover those (a direct delete gave 120 of 120 successes). The worker and Redis are
+single replicas by choice, since a PDB on one pod blocks every drain.
