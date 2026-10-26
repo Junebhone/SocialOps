@@ -1,0 +1,48 @@
+# The arq job queue. One replica and emptyDir by choice: a single point of
+# failure that loses queued jobs on restart (rows stay safe in RDS and
+# POST /queue/requeue re-enqueues them). ElastiCache would remove this for
+# about $12 a month. No PodDisruptionBudget: a PDB on one replica blocks every
+# node drain forever.
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: redis
+  labels: {app: redis}
+spec:
+  replicas: 1
+  selector:
+    matchLabels: {app: redis}
+  template:
+    metadata:
+      labels: {app: redis}
+    spec:
+      containers:
+        - name: redis
+          image: redis:7-alpine
+          ports:
+            - containerPort: 6379
+          resources:
+            requests: {cpu: 50m, memory: 64Mi}
+            limits: {memory: 256Mi}
+          livenessProbe:
+            exec: {command: ["redis-cli", "ping"]}
+            periodSeconds: 10
+            failureThreshold: 3
+          readinessProbe:
+            exec: {command: ["redis-cli", "ping"]}
+            periodSeconds: 5
+            failureThreshold: 2
+          volumeMounts:
+            - {name: data, mountPath: /data}
+      volumes:
+        - {name: data, emptyDir: {}}
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: redis
+spec:
+  type: ClusterIP
+  selector: {app: redis}
+  ports:
+    - {port: 6379, targetPort: 6379}

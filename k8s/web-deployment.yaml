@@ -1,0 +1,52 @@
+# Next.js dashboard. Same pattern as api: 2 replicas on different nodes.
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: web
+  labels: {app: web}
+spec:
+  replicas: 2
+  strategy:
+    type: RollingUpdate
+    rollingUpdate: {maxUnavailable: 0, maxSurge: 1}
+  selector:
+    matchLabels: {app: web}
+  template:
+    metadata:
+      labels: {app: web}
+    spec:
+      terminationGracePeriodSeconds: 30
+      topologySpreadConstraints:
+        - maxSkew: 1
+          topologyKey: kubernetes.io/hostname
+          whenUnsatisfiable: ScheduleAnyway
+          labelSelector:
+            matchLabels: {app: web}
+      containers:
+        - name: web
+          image: 518668548718.dkr.ecr.us-east-2.amazonaws.com/socialops-web
+          ports:
+            - {name: http, containerPort: 3000}
+          env:
+            - name: NEXT_PUBLIC_API_URL
+              valueFrom:
+                configMapKeyRef: {name: socialops-config, key: NEXT_PUBLIC_API_URL}
+          resources:
+            requests: {cpu: 100m, memory: 192Mi}
+            limits: {memory: 512Mi}
+          # web has no database of its own, so both probes ask the same page.
+          # They differ in tolerance: readiness drops it from the ALB after 10s
+          # of failures; liveness restarts it only after 30s.
+          livenessProbe:
+            httpGet: {path: /inbox, port: http}
+            initialDelaySeconds: 10
+            periodSeconds: 10
+            failureThreshold: 3
+          readinessProbe:
+            httpGet: {path: /inbox, port: http}
+            initialDelaySeconds: 5
+            periodSeconds: 5
+            failureThreshold: 2
+          lifecycle:
+            preStop:
+              exec: {command: ["sleep", "10"]}

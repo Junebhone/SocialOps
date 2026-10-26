@@ -1,0 +1,20 @@
+# Voluntary disruptions (a node drain, a node-group update) may never take the
+# last api or web pod. Only on the 2-replica workloads: a PDB on worker or redis
+# (one replica) would block every drain forever.
+apiVersion: policy/v1
+kind: PodDisruptionBudget
+metadata:
+  name: api
+spec:
+  minAvailable: 1
+  selector:
+    matchLabels: {app: api}
+---
+apiVersion: policy/v1
+kind: PodDisruptionBudget
+metadata:
+  name: web
+spec:
+  minAvailable: 1
+  selector:
+    matchLabels: {app: web}

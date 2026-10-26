@@ -1,0 +1,23 @@
+# Non-secret settings, the same names docker-compose.cloud.yml uses.
+# DATABASE_URL is NOT here: it comes from the Secret socialops-db.
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: socialops-config
+data:
+  REDIS_URL: "redis://redis:6379/0"
+  STORAGE_BACKEND: "s3"
+  STORAGE_ROOT: "socialops-uploads-518668548718"
+  AWS_REGION: "us-east-2"
+  # Ollama runs on no node in this cluster. Member 4's Bedrock change switches
+  # LLM_PROVIDER to bedrock and the three model names. Until then the api and
+  # web work fully; only the worker's model calls fail (and land in the DLQ).
+  LLM_PROVIDER: "ollama"
+  LLM_MODEL_FAST: "qwen3:0.6b"
+  LLM_MODEL_TEXT: "qwen2.5vl:3b"
+  LLM_MODEL_VISION: "qwen2.5vl:3b"
+  OLLAMA_BASE_URL: "http://ollama.invalid:11434"
+  # The browser's address for the api. web/entrypoint.sh writes it into the
+  # bundle at container start, so no image rebuild is needed. Member 3: set the
+  # real hostname (search the repo for socialops.example.com).
+  NEXT_PUBLIC_API_URL: "https://api.socialops.website"
