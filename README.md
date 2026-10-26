@@ -558,6 +558,12 @@ needs app code before the tasks start are all in
 [infra/README.md](infra/README.md). Every pull request also gets a plan
 comment for each environment from CI.
 
+Milestone 5 runs the same images on Kubernetes instead: Amazon EKS, with two
+replicas each of api and web, an autoscaler, PodDisruptionBudgets and an ALB at
+`https://app.socialops.website`. The cluster, the manifests, the Secret command
+and the teardown order are in [k8s/README.md](k8s/README.md) (D36). The cluster
+bills by the hour, so delete it after use.
+
 ### Ports and services
 
 | Service | Port | Notes |

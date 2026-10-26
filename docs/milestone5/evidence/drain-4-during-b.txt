@@ -1,0 +1,8 @@
+NAME                      READY   STATUS    RESTARTS   AGE     IP              NODE                                          NOMINATED NODE   READINESS GATES
+api-747c87fb75-2bl74      0/1     Running   0          63s     172.31.18.205   ip-172-31-30-142.us-east-2.compute.internal   <none>           <none>
+api-747c87fb75-txw5x      0/1     Pending   0          47s     <none>          <none>                                        <none>           <none>
+curlloop                  1/1     Running   0          66s     172.31.27.173   ip-172-31-30-142.us-east-2.compute.internal   <none>           <none>
+redis-7c99566d89-nksqn    0/1     Pending   0          47s     <none>          <none>                                        <none>           <none>
+web-67bdb4f467-g26z2      0/1     Pending   0          47s     <none>          <none>                                        <none>           <none>
+web-67bdb4f467-wd65f      1/1     Running   0          6m54s   172.31.29.255   ip-172-31-30-142.us-east-2.compute.internal   <none>           <none>
+worker-74bbd89667-wg4t4   0/1     Pending   0          48s     <none>          <none>                                        <none>           <none>

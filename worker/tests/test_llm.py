@@ -202,3 +202,39 @@ def test_thinking_control_is_not_applied_to_other_providers() -> None:
     settings = get_settings().model_copy(update={"llm_provider": "bedrock"})
 
     assert llm._model_settings(settings, "fast") is None
+
+
+@pytest.mark.parametrize(
+    ("tier", "field"), [("fast", "llm_model_fast"), ("vision", "llm_model_vision")]
+)
+def test_bedrock_builds_a_converse_model_for_the_tier(tier: str, field: str) -> None:
+    """ADR-0002: switching provider is an env change. The tier still picks the model."""
+    from pydantic_ai.models.bedrock import BedrockConverseModel
+
+    settings = get_settings().model_copy(
+        update={
+            "llm_provider": "bedrock",
+            "aws_region": "us-east-2",
+            field: "us.amazon.nova-lite-v1:0",
+        }
+    )
+
+    model = llm._build_model(settings, tier)  # type: ignore[arg-type]
+
+    assert isinstance(model, BedrockConverseModel)
+    assert model.model_name == "us.amazon.nova-lite-v1:0"
+
+
+def test_bedrock_without_a_region_fails_at_startup(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Same reason as S3: a missing region should stop the worker booting, not
+    fail the first model call."""
+    from pydantic import ValidationError
+
+    from worker.config import Settings
+
+    monkeypatch.setenv("LLM_PROVIDER", "bedrock")
+    monkeypatch.setenv("STORAGE_BACKEND", "local")
+    monkeypatch.delenv("AWS_REGION", raising=False)
+
+    with pytest.raises(ValidationError, match="AWS_REGION"):
+        Settings()

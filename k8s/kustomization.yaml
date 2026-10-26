@@ -24,14 +24,13 @@ resources:
   - hpa-api.yaml
   - pdb.yaml
 
-# One place to move every image. Before recording, pin by digest instead of tag:
-#   aws ecr describe-images --region us-east-2 --repository-name socialops-api \
-#     --image-ids imageTag=v2 --query 'imageDetails[0].imageDigest' --output text
-# then replace `newTag: v2` with `digest: sha256:...` for each image.
+# One place to move every image, pinned by digest so a re-pushed tag cannot change
+# what runs. Comments say which tag each digest is. To move one:
+#   docker buildx imagetools inspect <repo>:<tag>     # the index "Digest:" line
 images:
   - name: 518668548718.dkr.ecr.us-east-2.amazonaws.com/socialops-api
-    newTag: v2
+    digest: sha256:af9ca774b29cdf0a7ee73a7b89b9bc586b9a8c39f2d3cc006326707c7845ef99  # v2
   - name: 518668548718.dkr.ecr.us-east-2.amazonaws.com/socialops-worker
-    newTag: v2
+    digest: sha256:a60203449ba9d850c6926622a079432e3c7fc2923817af7565ac56700575c4e7  # v3, Bedrock
   - name: 518668548718.dkr.ecr.us-east-2.amazonaws.com/socialops-web
-    newTag: v2
+    digest: sha256:c3b6fee0c81cc1b3bf0141eeff26df4d683d15f8bb7612afaee29e9b999d3d85  # v2

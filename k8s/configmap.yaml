@@ -9,13 +9,14 @@ data:
   STORAGE_BACKEND: "s3"
   STORAGE_ROOT: "socialops-uploads-518668548718"
   AWS_REGION: "us-east-2"
-  # Ollama runs on no node in this cluster. Member 4's Bedrock change switches
-  # LLM_PROVIDER to bedrock and the three model names. Until then the api and
-  # web work fully; only the worker's model calls fail (and land in the DLQ).
-  LLM_PROVIDER: "ollama"
-  LLM_MODEL_FAST: "qwen3:0.6b"
-  LLM_MODEL_TEXT: "qwen2.5vl:3b"
-  LLM_MODEL_VISION: "qwen2.5vl:3b"
+  # Ollama runs on no node in this cluster, so the pods use Bedrock (IRSA role
+  # socialops-app-irsa grants bedrock:InvokeModel). Cross-region inference profiles
+  # for the cheapest Nova pair: Micro for triage, Lite (vision-capable) for the rest.
+  LLM_PROVIDER: "bedrock"
+  LLM_MODEL_FAST: "us.amazon.nova-micro-v1:0"
+  LLM_MODEL_TEXT: "us.amazon.nova-lite-v1:0"
+  LLM_MODEL_VISION: "us.amazon.nova-lite-v1:0"
+  # Still required by config.py; unused while LLM_PROVIDER is bedrock.
   OLLAMA_BASE_URL: "http://ollama.invalid:11434"
   # The browser's address for the api. web/entrypoint.sh writes it into the
   # bundle at container start, so no image rebuild is needed. Member 3: set the

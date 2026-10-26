@@ -1,0 +1,106 @@
+node/ip-172-31-30-142.us-east-2.compute.internal cordoned
+WARNING: ignoring DaemonSet-managed Pods: kube-system/aws-node-p7rzs, kube-system/kube-proxy-2vdcr
+evicting pod socialops/worker-74bbd89667-2d572
+evicting pod kube-system/aws-load-balancer-controller-76c8b579d7-94vq6
+evicting pod kube-system/metrics-server-686df459d5-zbhnm
+evicting pod socialops/api-747c87fb75-2bl74
+evicting pod kube-system/aws-load-balancer-controller-76c8b579d7-d284x
+evicting pod kube-system/coredns-6ffbf86fcd-bm8tj
+evicting pod kube-system/coredns-6ffbf86fcd-wbrz8
+evicting pod kube-system/metrics-server-686df459d5-mg6wg
+evicting pod socialops/redis-7c99566d89-5xvlw
+evicting pod socialops/api-747c87fb75-pswss
+evicting pod socialops/web-67bdb4f467-7knhh
+evicting pod socialops/web-67bdb4f467-wd65f
+error when evicting pods/"metrics-server-686df459d5-zbhnm" -n "kube-system" (will retry after 5s): Cannot evict pod as it would violate the pod's disruption budget.
+error when evicting pods/"web-67bdb4f467-wd65f" -n "socialops" (will retry after 5s): Cannot evict pod as it would violate the pod's disruption budget.
+error when evicting pods/"api-747c87fb75-2bl74" -n "socialops" (will retry after 5s): Cannot evict pod as it would violate the pod's disruption budget.
+error when evicting pods/"coredns-6ffbf86fcd-bm8tj" -n "kube-system" (will retry after 5s): Cannot evict pod as it would violate the pod's disruption budget.
+pod/aws-load-balancer-controller-76c8b579d7-d284x evicted
+pod/metrics-server-686df459d5-mg6wg evicted
+pod/redis-7c99566d89-5xvlw evicted
+pod/aws-load-balancer-controller-76c8b579d7-94vq6 evicted
+pod/worker-74bbd89667-2d572 evicted
+evicting pod kube-system/metrics-server-686df459d5-zbhnm
+error when evicting pods/"metrics-server-686df459d5-zbhnm" -n "kube-system" (will retry after 5s): Cannot evict pod as it would violate the pod's disruption budget.
+evicting pod socialops/web-67bdb4f467-wd65f
+error when evicting pods/"web-67bdb4f467-wd65f" -n "socialops" (will retry after 5s): Cannot evict pod as it would violate the pod's disruption budget.
+evicting pod socialops/api-747c87fb75-2bl74
+evicting pod kube-system/coredns-6ffbf86fcd-bm8tj
+error when evicting pods/"api-747c87fb75-2bl74" -n "socialops" (will retry after 5s): Cannot evict pod as it would violate the pod's disruption budget.
+error when evicting pods/"coredns-6ffbf86fcd-bm8tj" -n "kube-system" (will retry after 5s): Cannot evict pod as it would violate the pod's disruption budget.
+pod/coredns-6ffbf86fcd-wbrz8 evicted
+evicting pod kube-system/metrics-server-686df459d5-zbhnm
+error when evicting pods/"metrics-server-686df459d5-zbhnm" -n "kube-system" (will retry after 5s): Cannot evict pod as it would violate the pod's disruption budget.
+evicting pod socialops/web-67bdb4f467-wd65f
+error when evicting pods/"web-67bdb4f467-wd65f" -n "socialops" (will retry after 5s): Cannot evict pod as it would violate the pod's disruption budget.
+evicting pod socialops/api-747c87fb75-2bl74
+evicting pod kube-system/coredns-6ffbf86fcd-bm8tj
+error when evicting pods/"api-747c87fb75-2bl74" -n "socialops" (will retry after 5s): Cannot evict pod as it would violate the pod's disruption budget.
+error when evicting pods/"coredns-6ffbf86fcd-bm8tj" -n "kube-system" (will retry after 5s): Cannot evict pod as it would violate the pod's disruption budget.
+pod/web-67bdb4f467-7knhh evicted
+pod/api-747c87fb75-pswss evicted
+evicting pod kube-system/metrics-server-686df459d5-zbhnm
+error when evicting pods/"metrics-server-686df459d5-zbhnm" -n "kube-system" (will retry after 5s): Cannot evict pod as it would violate the pod's disruption budget.
+evicting pod socialops/web-67bdb4f467-wd65f
+error when evicting pods/"web-67bdb4f467-wd65f" -n "socialops" (will retry after 5s): Cannot evict pod as it would violate the pod's disruption budget.
+evicting pod socialops/api-747c87fb75-2bl74
+error when evicting pods/"api-747c87fb75-2bl74" -n "socialops" (will retry after 5s): Cannot evict pod as it would violate the pod's disruption budget.
+evicting pod kube-system/coredns-6ffbf86fcd-bm8tj
+error when evicting pods/"coredns-6ffbf86fcd-bm8tj" -n "kube-system" (will retry after 5s): Cannot evict pod as it would violate the pod's disruption budget.
+evicting pod kube-system/metrics-server-686df459d5-zbhnm
+error when evicting pods/"metrics-server-686df459d5-zbhnm" -n "kube-system" (will retry after 5s): Cannot evict pod as it would violate the pod's disruption budget.
+evicting pod socialops/web-67bdb4f467-wd65f
+evicting pod socialops/api-747c87fb75-2bl74
+error when evicting pods/"web-67bdb4f467-wd65f" -n "socialops" (will retry after 5s): Cannot evict pod as it would violate the pod's disruption budget.
+evicting pod kube-system/coredns-6ffbf86fcd-bm8tj
+error when evicting pods/"api-747c87fb75-2bl74" -n "socialops" (will retry after 5s): Cannot evict pod as it would violate the pod's disruption budget.
+error when evicting pods/"coredns-6ffbf86fcd-bm8tj" -n "kube-system" (will retry after 5s): Cannot evict pod as it would violate the pod's disruption budget.
+evicting pod kube-system/metrics-server-686df459d5-zbhnm
+error when evicting pods/"metrics-server-686df459d5-zbhnm" -n "kube-system" (will retry after 5s): Cannot evict pod as it would violate the pod's disruption budget.
+evicting pod socialops/web-67bdb4f467-wd65f
+error when evicting pods/"web-67bdb4f467-wd65f" -n "socialops" (will retry after 5s): Cannot evict pod as it would violate the pod's disruption budget.
+evicting pod socialops/api-747c87fb75-2bl74
+evicting pod kube-system/coredns-6ffbf86fcd-bm8tj
+error when evicting pods/"api-747c87fb75-2bl74" -n "socialops" (will retry after 5s): Cannot evict pod as it would violate the pod's disruption budget.
+error when evicting pods/"coredns-6ffbf86fcd-bm8tj" -n "kube-system" (will retry after 5s): Cannot evict pod as it would violate the pod's disruption budget.
+evicting pod kube-system/metrics-server-686df459d5-zbhnm
+error when evicting pods/"metrics-server-686df459d5-zbhnm" -n "kube-system" (will retry after 5s): Cannot evict pod as it would violate the pod's disruption budget.
+evicting pod socialops/web-67bdb4f467-wd65f
+error when evicting pods/"web-67bdb4f467-wd65f" -n "socialops" (will retry after 5s): Cannot evict pod as it would violate the pod's disruption budget.
+evicting pod socialops/api-747c87fb75-2bl74
+evicting pod kube-system/coredns-6ffbf86fcd-bm8tj
+error when evicting pods/"api-747c87fb75-2bl74" -n "socialops" (will retry after 5s): Cannot evict pod as it would violate the pod's disruption budget.
+error when evicting pods/"coredns-6ffbf86fcd-bm8tj" -n "kube-system" (will retry after 5s): Cannot evict pod as it would violate the pod's disruption budget.
+evicting pod kube-system/metrics-server-686df459d5-zbhnm
+error when evicting pods/"metrics-server-686df459d5-zbhnm" -n "kube-system" (will retry after 5s): Cannot evict pod as it would violate the pod's disruption budget.
+evicting pod socialops/web-67bdb4f467-wd65f
+error when evicting pods/"web-67bdb4f467-wd65f" -n "socialops" (will retry after 5s): Cannot evict pod as it would violate the pod's disruption budget.
+evicting pod socialops/api-747c87fb75-2bl74
+evicting pod kube-system/coredns-6ffbf86fcd-bm8tj
+error when evicting pods/"api-747c87fb75-2bl74" -n "socialops" (will retry after 5s): Cannot evict pod as it would violate the pod's disruption budget.
+error when evicting pods/"coredns-6ffbf86fcd-bm8tj" -n "kube-system" (will retry after 5s): Cannot evict pod as it would violate the pod's disruption budget.
+evicting pod kube-system/metrics-server-686df459d5-zbhnm
+error when evicting pods/"metrics-server-686df459d5-zbhnm" -n "kube-system" (will retry after 5s): Cannot evict pod as it would violate the pod's disruption budget.
+evicting pod socialops/web-67bdb4f467-wd65f
+error when evicting pods/"web-67bdb4f467-wd65f" -n "socialops" (will retry after 5s): Cannot evict pod as it would violate the pod's disruption budget.
+evicting pod socialops/api-747c87fb75-2bl74
+evicting pod kube-system/coredns-6ffbf86fcd-bm8tj
+error when evicting pods/"api-747c87fb75-2bl74" -n "socialops" (will retry after 5s): Cannot evict pod as it would violate the pod's disruption budget.
+error when evicting pods/"coredns-6ffbf86fcd-bm8tj" -n "kube-system" (will retry after 5s): Cannot evict pod as it would violate the pod's disruption budget.
+evicting pod kube-system/metrics-server-686df459d5-zbhnm
+evicting pod socialops/web-67bdb4f467-wd65f
+evicting pod kube-system/coredns-6ffbf86fcd-bm8tj
+evicting pod socialops/api-747c87fb75-2bl74
+There are pending pods in node "ip-172-31-30-142.us-east-2.compute.internal" when an error occurred: [error when evicting pods/"metrics-server-686df459d5-zbhnm" -n "kube-system": global timeout reached: 45s, error when evicting pods/"web-67bdb4f467-wd65f" -n "socialops": global timeout reached: 45s, error when evicting pods/"coredns-6ffbf86fcd-bm8tj" -n "kube-system": global timeout reached: 45s, error when evicting pods/"api-747c87fb75-2bl74" -n "socialops": global timeout reached: 45s]
+pod/coredns-6ffbf86fcd-bm8tj
+pod/metrics-server-686df459d5-zbhnm
+pod/api-747c87fb75-2bl74
+pod/web-67bdb4f467-wd65f
+error: unable to drain node "ip-172-31-30-142.us-east-2.compute.internal" due to error:[error when evicting pods/"metrics-server-686df459d5-zbhnm" -n "kube-system": global timeout reached: 45s, error when evicting pods/"web-67bdb4f467-wd65f" -n "socialops": global timeout reached: 45s, error when evicting pods/"coredns-6ffbf86fcd-bm8tj" -n "kube-system": global timeout reached: 45s, error when evicting pods/"api-747c87fb75-2bl74" -n "socialops": global timeout reached: 45s], continuing command...
+There are pending nodes to be drained:
+ ip-172-31-30-142.us-east-2.compute.internal
+error when evicting pods/"metrics-server-686df459d5-zbhnm" -n "kube-system": global timeout reached: 45s
+error when evicting pods/"web-67bdb4f467-wd65f" -n "socialops": global timeout reached: 45s
+error when evicting pods/"coredns-6ffbf86fcd-bm8tj" -n "kube-system": global timeout reached: 45s
+error when evicting pods/"api-747c87fb75-2bl74" -n "socialops": global timeout reached: 45s

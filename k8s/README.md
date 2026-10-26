@@ -18,12 +18,30 @@ the stand-in is EKS (`socialops-eks`, us-east-2).
 The Secret `socialops-db` is **not** in git. It is created by command below.
 A Kubernetes Secret is base64, not encryption; access to it is what protects it.
 
-## Before applying
+## Cluster (Module 01, once)
 
-Replace the placeholders (Member 3): `socialops.example.com` → our subdomain,
-`REPLACE_WITH_ACM_CERT_ARN` → the Issued certificate ARN.
+    aws ec2 create-tags --region us-east-2 \
+      --resources subnet-05177c280220c291b subnet-0105402ce73e5e616 \
+      --tags Key=kubernetes.io/role/elb,Value=1 Key=kubernetes.io/cluster/socialops-eks,Value=shared
+    aws iam create-policy --policy-name socialops-pod-runtime \
+      --policy-document file://k8s/iam/pod-runtime.json
+    eksctl create cluster -f k8s/cluster/eksctl.yaml        # 15-20 min; also creates
+                                                            # socialops-app-irsa, metrics-server
+    aws eks update-kubeconfig --name socialops-eks --region us-east-2
+    helm repo add eks https://aws.github.io/eks-charts && helm repo update
+    helm install aws-load-balancer-controller eks/aws-load-balancer-controller -n kube-system \
+      --set clusterName=socialops-eks --set serviceAccount.create=false \
+      --set serviceAccount.name=aws-load-balancer-controller \
+      --set region=us-east-2 --set vpcId=vpc-0b1aaa0783cc57a44
+    # RDS accepts 5432 from the cluster security group
+    CSG=$(aws eks describe-cluster --name socialops-eks --region us-east-2 \
+      --query cluster.resourcesVpcConfig.clusterSecurityGroupId --output text)
+    aws ec2 authorize-security-group-ingress --region us-east-2 \
+      --group-id sg-0bd40e4797af7fe3a --protocol tcp --port 5432 --source-group $CSG
 
-    grep -rn "socialops.example.com\|REPLACE_WITH" k8s/
+Teammates listed under `accessConfig` in `eksctl.yaml` get cluster admin; each runs
+the `update-kubeconfig` line once. After the ALB exists, `app` and `api` are
+Route 53 alias A records to it in the `socialops.website` zone.
 
 ## Apply
 
@@ -64,3 +82,22 @@ outage does restart the worker.
     POD=$(kubectl -n socialops get pod -l app=api -o name | head -1)
     kubectl -n socialops exec $POD -- python -c "import urllib.request as u;print(u.urlopen('http://127.0.0.1:8000/health').read().decode())"
     kubectl -n socialops exec $POD -- python -c "import urllib.request as u;print(u.urlopen('http://127.0.0.1:8000/health/ready').read().decode())"
+
+## After a drain test
+
+Uncordoning does not move pods back, so after draining both nodes every replica sits on one node.
+Spread them again before the next take:
+
+    kubectl -n socialops rollout restart deploy/api deploy/web
+
+## Teardown (right after recording)
+
+    kubectl delete ingress --all -n socialops    # removes the ALB; wait until it is gone
+    aws ec2 revoke-security-group-ingress --region us-east-2 \
+      --group-id sg-0bd40e4797af7fe3a --protocol tcp --port 5432 --source-group $CSG
+    eksctl delete cluster -f k8s/cluster/eksctl.yaml
+    aws rds stop-db-instance --db-instance-identifier socialops-db --region us-east-2
+
+Delete the Ingresses first, or the ALB outlives the cluster and keeps billing.
+Delete the `app`/`api` alias records too. Then check EC2 for leftover load
+balancers, volumes and Elastic IPs.
