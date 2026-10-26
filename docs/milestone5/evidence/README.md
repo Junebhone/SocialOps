@@ -8,7 +8,7 @@ the video; the video still records each test live.
 |---|---|---|
 | Delete one api pod under a curl loop (0.5 s) | replacement Ready in ~15 s; **120 / 120 requests 200** | (captured in session; rerun on camera) |
 | HPA under load (3 pods x 8 parallel curls on `/health/ready`) | CPU 1% → 231% of request; **2 → 4 replicas**, `SuccessfulRescale`; back to 2 after load stopped | (captured in session; rerun on camera) |
-| Drain node A, then node B, PDB in place | B's drain refused: `Cannot evict pod as it would violate the pod's disruption budget` (36 refusals); one api pod kept serving | `drain-0..4-*.txt` |
+| Drain node A, then node B, PDB in place | B's drain refused: `Cannot evict pod as it would violate the pod's disruption budget` (9 refusals each for api, web, coredns, metrics-server); one api pod kept serving | `drain-0..4-*.txt` |
 | curl loop during both drains | **337 / 360 200**, 22 timeouts (`000`) while A drained, 1 × 503 | `drain-curl-codes.txt` |
 | Drain node A again, curl by pinned ALB IP vs. DNS | both columns: 196-197 / 200 200, 2-3 × `000`, 1 × 502 | `drain-curl-pinned-vs-dns.txt` |
 
