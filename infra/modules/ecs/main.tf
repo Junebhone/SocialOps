@@ -288,4 +288,11 @@ resource "aws_ecs_service" "this" {
 
   propagate_tags          = "SERVICE"
   enable_ecs_managed_tags = true
+
+  # CI/CD registers and deploys new task definition revisions.
+  # Terraform owns the service infrastructure but intentionally ignores
+  # pipeline-driven task definition updates.
+  lifecycle {
+    ignore_changes = [task_definition]
+  }
 }
