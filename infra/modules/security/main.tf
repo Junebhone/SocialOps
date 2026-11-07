@@ -12,7 +12,7 @@
 # rewriting the group.
 
 locals {
-  alb_listener_ports = toset([80, var.api_listener_port])
+  alb_listener_ports = toset([80, 443])
 
   alb_ingress = {
     for pair in setproduct(var.allowed_ingress_cidrs, local.alb_listener_ports) :
@@ -22,7 +22,7 @@ locals {
 
 resource "aws_security_group" "alb" {
   name        = "${var.name}-alb"
-  description = "Public ALB: HTTP for the web app and the API listener."
+  description = "Public ALB: HTTP redirect and HTTPS application traffic."
   vpc_id      = var.vpc_id
 
   tags = { Name = "${var.name}-alb" }

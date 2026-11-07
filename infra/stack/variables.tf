@@ -28,6 +28,11 @@ variable "aws_region" {
   default     = "us-east-1"
 }
 
+variable "domain_name" {
+  description = "Public Route 53 domain used by the application."
+  type        = string
+}
+
 variable "allowed_account_ids" {
   description = "If non-empty, the AWS provider refuses to run against any other account."
   type        = list(string)

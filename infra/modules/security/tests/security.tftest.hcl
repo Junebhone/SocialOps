@@ -15,8 +15,8 @@ run "only_the_alb_faces_clients" {
   }
 
   assert {
-    condition     = toset([for r in aws_vpc_security_group_ingress_rule.alb_from_clients : r.from_port]) == toset([80, 8000])
-    error_message = "The ALB should accept clients on the web and API listener ports only."
+    condition     = toset([for r in aws_vpc_security_group_ingress_rule.alb_from_clients : r.from_port]) == toset([80, 443])
+    error_message = "The ALB should accept clients on HTTP and HTTPS only."
   }
 }
 

@@ -4,6 +4,7 @@
 environment = "dev"
 aws_region  = "us-east-1"
 disposable  = true
+domain_name = "socialops.website"
 
 vpc_cidr           = "10.10.0.0/16"
 single_nat_gateway = true
@@ -28,7 +29,7 @@ services = {
 # The full git SHA to deploy. CI pushes every merge to main under its SHA;
 # deploy a new build by changing this line in a PR. 8d183a3 is the merge of
 # PR #4, the first build CI pushed to ECR.
-image_tag = "8d183a315eb18fff3e5745a40297c8e13b7dcf6d"
+image_tag = "2ad28d6e02e8faff81c0ba3fb638a0466bb0055b"
 
 # The config.py contract for models (tier -> model, D6). Ollama is the local
 # default and does not run on AWS, so AWS environments use Bedrock. Current

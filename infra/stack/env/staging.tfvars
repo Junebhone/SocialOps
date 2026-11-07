@@ -6,6 +6,7 @@
 environment = "staging"
 aws_region  = "us-east-1"
 disposable  = false
+domain_name = "socialops.website"
 
 vpc_cidr           = "10.20.0.0/16"
 single_nat_gateway = false
