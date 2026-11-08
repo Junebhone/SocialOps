@@ -59,3 +59,16 @@ output "migrate_command" {
     "--network-configuration 'awsvpcConfiguration={subnets=[${join(",", module.network.private_subnet_ids)}],securityGroups=[${module.security.task_security_group_ids.api}],assignPublicIp=DISABLED}'",
   ])
 }
+
+output "api_5xx_metric" {
+  description = "Namespace and name of the API 5xx count, for the alarm and dashboard."
+  value = {
+    namespace = module.observability.metric_namespace
+    name      = module.observability.api_5xx_metric_name
+  }
+}
+
+output "api_log_group_name" {
+  description = "Where to find a request's JSON log line by request_id."
+  value       = module.ecs.log_group_names["api"]
+}
