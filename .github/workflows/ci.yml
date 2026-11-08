@@ -10,6 +10,8 @@ on:
   pull_request:
   push:
     branches: [main]
+  # Re-deploy (or retry a failed deploy) of the selected ref; main only.
+  workflow_dispatch:
 
 permissions:
   contents: read
@@ -84,7 +86,7 @@ jobs:
       # Push only from main, and only once infra/bootstrap has created the role
       # and the repository variables are set. Before that, images are still
       # built on every run, so a broken Dockerfile fails the PR that broke it.
-      PUSH: ${{ github.event_name == 'push' && github.ref == 'refs/heads/main' && vars.AWS_ECR_PUSH_ROLE_ARN != '' }}
+      PUSH: ${{ github.event_name != 'pull_request' && github.ref == 'refs/heads/main' && vars.AWS_ECR_PUSH_ROLE_ARN != '' }}
       ECR_REPOSITORY_PREFIX: socialops
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -155,3 +157,72 @@ jobs:
           else
             echo "Built \`${{ steps.image.outputs.ref }}\` (not pushed: pushes happen on main once AWS is configured, see infra/README.md)." >> "$GITHUB_STEP_SUMMARY"
           fi
+
+  # Deploy the images just pushed to the dev ECS services, check health over the
+  # public URLs, and roll back automatically if the new version is unhealthy.
+  #
+  # Two safety nets, for different failures. The ECS deployment circuit breaker
+  # (enabled in infra/modules/ecs) rolls back tasks that never start or never
+  # pass their container health check. It cannot see a deployment that starts,
+  # stays up and is broken (for example /health/ready returns 503 because the
+  # database is unreachable). The health check and rollback below catch that.
+  #
+  # Terraform ignores task_definition on the services (ignore_changes), so a
+  # deploy from here does not show up as drift in `terraform plan`.
+  deploy:
+    name: Deploy (dev)
+    needs: images
+    if: github.event_name != 'pull_request' && github.ref == 'refs/heads/main' && vars.AWS_DEPLOY_ROLE_ARN != ''
+    runs-on: ubuntu-24.04
+    timeout-minutes: 45
+    # No `environment:` key on purpose: it would change the OIDC subject the
+    # deploy role trusts (infra/bootstrap/ci.tf explains).
+    permissions:
+      contents: read
+      id-token: write
+    concurrency:
+      group: deploy-dev
+      cancel-in-progress: false
+    env:
+      CLUSTER: socialops-dev
+      REGION: ${{ vars.AWS_REGION }}
+      IMAGE_TAG: ${{ github.sha }}
+      API_URL: ${{ vars.API_URL || 'https://api.socialops.website' }}
+      WEB_URL: ${{ vars.WEB_URL || 'https://app.socialops.website' }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - name: AWS credentials (OIDC, deploy role)
+        uses: aws-actions/configure-aws-credentials@e1253824e5c10ff9df46874f81ed3ec929e19cfd # v6.3.0
+        with:
+          role-to-assume: ${{ vars.AWS_DEPLOY_ROLE_ARN }}
+          aws-region: ${{ vars.AWS_REGION }}
+          role-session-name: deploy-${{ github.run_id }}
+
+      - name: Record running revisions (rollback target)
+        run: scripts/ci/deploy.sh record
+
+      - name: Check images exist
+        run: scripts/ci/deploy.sh check_images
+
+      - name: Register new task definition revisions
+        run: scripts/ci/deploy.sh register
+
+      - name: Run migrations (one-off task)
+        run: scripts/ci/deploy.sh migrate
+
+      - name: Update services and wait for stability
+        id: update
+        run: |
+          echo "DEPLOY_STARTED=true" >> "$GITHUB_ENV"
+          scripts/ci/deploy.sh update
+
+      - name: Health check and revision check
+        run: scripts/ci/deploy.sh verify
+
+      # Runs only if something failed after the services were updated. Goes back
+      # to the recorded revisions, proves the old version answers, then fails
+      # the run so it shows red.
+      - name: Roll back
+        if: failure() && env.DEPLOY_STARTED == 'true'
+        run: scripts/ci/deploy.sh rollback
