@@ -56,6 +56,8 @@ locals {
     SQS_QUEUE_URL = module.queue.queue_url
     # GET /debug/error answers 404 unless this is "true" (app/routers/debug.py).
     ENABLE_ERROR_ROUTE = tostring(var.enable_error_route)
+    # Runtime switch for the same route (see error_route.tf).
+    ERROR_ROUTE_SSM_PARAMETER = aws_ssm_parameter.error_route.name
   }
 }
 
@@ -125,10 +127,11 @@ module "queue" {
 module "iam" {
   source = "../modules/iam"
 
-  name                    = local.name
-  database_url_secret_arn = module.database.database_url_secret_arn
-  assets_bucket_arn       = module.storage.bucket_arn
-  queue_arn               = module.queue.queue_arn
+  name                      = local.name
+  database_url_secret_arn   = module.database.database_url_secret_arn
+  assets_bucket_arn         = module.storage.bucket_arn
+  queue_arn                 = module.queue.queue_arn
+  error_route_parameter_arn = aws_ssm_parameter.error_route.arn
 }
 
 module "alb" {
