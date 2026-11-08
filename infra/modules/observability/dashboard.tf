@@ -50,8 +50,10 @@ resource "aws_cloudwatch_dashboard" "this" {
           stat    = "Sum"
           period  = 60
           metrics = [[var.metric_namespace, aws_cloudwatch_log_metric_filter.api_5xx.metric_transformation[0].name]]
+          # Metric widgets take horizontal/vertical lines only; the alarm itself is
+          # shown by the alarm-status widget at the bottom of the dashboard.
           annotations = {
-            alarms = [aws_cloudwatch_metric_alarm.api_5xx.arn]
+            horizontal = [{ label = "Alarm threshold (>= 1)", value = 1 }]
           }
         }
       },
@@ -116,6 +118,13 @@ resource "aws_cloudwatch_dashboard" "this" {
           stat    = "Average"
           period  = 60
           metrics = [["AWS/RDS", "CPUUtilization", "DBInstanceIdentifier", var.db_instance_identifier]]
+        }
+      },
+      {
+        type = "alarm", x = 0, y = 18, width = 24, height = 3
+        properties = {
+          title  = "Alarm state"
+          alarms = [aws_cloudwatch_metric_alarm.api_5xx.arn]
         }
       },
     ]
