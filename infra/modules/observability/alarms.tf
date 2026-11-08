@@ -6,6 +6,7 @@
 variable "alert_email" {
   description = "Address that receives alarm and OK notifications. Set in an uncommitted tfvars file, never in code."
   type        = string
+  sensitive   = true
 }
 
 resource "aws_sns_topic" "alerts" {
