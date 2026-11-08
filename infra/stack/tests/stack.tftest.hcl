@@ -39,6 +39,7 @@ mock_provider "aws" {
 # workspace to environment is switched off here and exercised on its own below.
 variables {
   require_workspace_match = false
+  alert_email             = "alerts@example.com"
 }
 
 run "environment_plans" {

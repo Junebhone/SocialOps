@@ -177,4 +177,11 @@ module "observability" {
   name               = local.name
   api_log_group_name = module.ecs.log_group_names["api"]
   metric_namespace   = "SocialOps/${var.environment}"
+
+  alert_email            = var.alert_email
+  cluster_name           = module.ecs.cluster_name
+  service_names          = module.ecs.service_names
+  alb_arn                = module.alb.arn
+  target_group_arns      = module.alb.target_group_arns
+  db_instance_identifier = module.database.instance_identifier
 }
