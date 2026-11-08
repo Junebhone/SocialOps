@@ -14,10 +14,21 @@ Deploy role: `socialops-ci-deploy` (OIDC, `ref:refs/heads/main` only).
 
 ## (b) Failed deploy, automatic rollback, verification
 
-TODO. Controlled failure prepared but not yet run: branch `m6/demo-bad-deploy` (local) makes `/health/ready`
-return 503 on ECS Fargate only (`AWS_EXECUTION_ENV` set), liveness `/health` still passes so the ECS circuit
-breaker does not trip. Expected: deploy, health check fails, "ROLLED BACK" in the job summary, old revisions
-verified serving, run red. Then revert (third, green run) and re-run `terraform plan`.
+- Run: https://github.com/Junebhone/SocialOps/actions/runs/42535888765 (conclusion: failure, as designed)
+- Commit SHA: `1e89ac939f9d4c225611a89064ab7d4848bd9845` (merge of PR #21), branch `main`
+- Controlled failure: on ECS Fargate only (`AWS_EXECUTION_ENV` set), `/health/ready` returned 503. Liveness
+  `/health` still passed, so the ECS circuit breaker did not trip; only the pipeline health check caught it.
+- Deploy job, from the log: `try 1/10 ... try 10/10: api=none web=200` (readiness 503 every try), then the
+  "Roll back" step: `try 1/10: api={"status":"ok","database":true,"redis":true} web=200`,
+  `api runs socialops-dev-api:3`, `worker runs socialops-dev-worker:3`, `web runs socialops-dev-web:2`
+  (the revisions recorded before the deploy).
+- Live after, checked independently: `https://api.socialops.website/health/ready` returned
+  `{"status":"ok","database":true,"redis":true}` and the web returned 200.
+- Lint, tests and all three image builds in this run were green; only the deploy job failed.
+
+## (c) Revert (third run)
+
+Revert of the controlled failure: PR #22. Run URL and SHA: TODO (fill in when it finishes).
 
 Note: `/health/ready` is not used by the ALB or container health checks (they use `/health`), which is why
 this failure is invisible to the circuit breaker and only the pipeline health check catches it.

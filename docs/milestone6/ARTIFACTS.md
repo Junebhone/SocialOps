@@ -18,7 +18,7 @@ Status: done = verified with real output; TODO = not yet produced. Update as evi
 | Controlled 5xx demo (log line by request_id, metric rise) | `docs/milestone6/evidence/` | TODO (Zainab + Tan) |
 | `terraform plan` showing no changes | `docs/milestone6/evidence/terraform-plan.txt`, refresh on | TODO (Dan) |
 | Pipeline run (a): build, deploy, health check | https://github.com/Junebhone/SocialOps/actions/runs/42529005106 , SHA 9f643eee8a07ed15fe2b7777dfbccc0e1abbd933, `evidence/pipeline.md` | done |
-| Pipeline run (b): failed deploy, automatic rollback, verified | run URL: , SHA: , `evidence/pipeline.md` | TODO |
+| Pipeline run (b): failed deploy, automatic rollback, verified | https://github.com/Junebhone/SocialOps/actions/runs/42535888765 , SHA 1e89ac939f9d4c225611a89064ab7d4848bd9845, `evidence/pipeline.md` | done |
 | Plan still clean after pipeline deploy | `evidence/terraform-plan-after-deploy.txt` | TODO |
 | Written analysis (1 page) | `docs/milestone6/Milestone6_Analysis.pdf` (draft; has TODO markers) | draft |
 | Slides | `docs/milestone6/Milestone6_SocialOps.pptx` (screenshot placeholders) | draft |
