@@ -172,6 +172,7 @@ variable "enable_error_route" {
 }
 
 variable "alert_email" {
-  description = "Address that receives CloudWatch alarm notifications (SNS). Set in an uncommitted *.auto.tfvars file."
+  description = "Address that receives CloudWatch alarm notifications (SNS). Locally: an ignored *.auto.tfvars file passed with -var-file. In CI: the ALERT_EMAIL repository variable (TF_VAR_alert_email). Never committed: the repo is public."
   type        = string
+  sensitive   = true
 }
