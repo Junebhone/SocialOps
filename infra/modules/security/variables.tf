@@ -30,12 +30,6 @@ variable "api_port" {
   default     = 8000
 }
 
-variable "api_listener_port" {
-  description = "Port the ALB exposes the API on. The browser calls the API directly (docs/architecture-phase1.md), so it needs its own public port."
-  type        = number
-  default     = 8000
-}
-
 variable "db_port" {
   description = "PostgreSQL port."
   type        = number

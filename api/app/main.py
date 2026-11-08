@@ -31,6 +31,7 @@ from app.routers import (
     comments,
     content_drafts,
     content_ideas,
+    debug,
     failed_jobs,
     ingest,
     insights,
@@ -98,6 +99,7 @@ app.include_router(insights.router)
 app.include_router(analytics.router)
 app.include_router(agent_runs.router)
 app.include_router(failed_jobs.router)
+app.include_router(debug.router)
 
 
 class Health(BaseModel):

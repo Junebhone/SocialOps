@@ -32,6 +32,9 @@ locals {
   name       = "${var.project}-${var.environment}"
   account_id = data.aws_caller_identity.current.account_id
 
+  web_hostname = var.environment == "dev" ? "app.${var.domain_name}" : "staging.${var.domain_name}"
+  api_hostname = var.environment == "dev" ? "api.${var.domain_name}" : "api-staging.${var.domain_name}"
+
   images = {
     for svc, repo in data.aws_ecr_repository.this : svc => "${repo.repository_url}:${var.image_tag}"
   }
@@ -51,6 +54,10 @@ locals {
     # Not read by config.py yet (extra="ignore" drops it). Wired now so the
     # arq -> SQS change needs a code change and no infrastructure change.
     SQS_QUEUE_URL = module.queue.queue_url
+    # GET /debug/error answers 404 unless this is "true" (app/routers/debug.py).
+    ENABLE_ERROR_ROUTE = tostring(var.enable_error_route)
+    # Runtime switch for the same route (see error_route.tf).
+    ERROR_ROUTE_SSM_PARAMETER = aws_ssm_parameter.error_route.name
   }
 }
 
@@ -120,10 +127,11 @@ module "queue" {
 module "iam" {
   source = "../modules/iam"
 
-  name                    = local.name
-  database_url_secret_arn = module.database.database_url_secret_arn
-  assets_bucket_arn       = module.storage.bucket_arn
-  queue_arn               = module.queue.queue_arn
+  name                      = local.name
+  database_url_secret_arn   = module.database.database_url_secret_arn
+  assets_bucket_arn         = module.storage.bucket_arn
+  queue_arn                 = module.queue.queue_arn
+  error_route_parameter_arn = aws_ssm_parameter.error_route.arn
 }
 
 module "alb" {
@@ -133,6 +141,10 @@ module "alb" {
   vpc_id            = module.network.vpc_id
   public_subnet_ids = module.network.public_subnet_ids
   security_group_id = module.security.alb_security_group_id
+
+  certificate_arn = aws_acm_certificate_validation.socialops.certificate_arn
+  web_hostname    = local.web_hostname
+  api_hostname    = local.api_hostname
 
   deletion_protection = !var.disposable
 }
@@ -159,4 +171,20 @@ module "ecs" {
   services           = var.services
   log_retention_days = var.log_retention_days
   container_insights = var.container_insights
+}
+
+# Log metric filters (Member 2) plus the dashboard and alarms (Member 3).
+module "observability" {
+  source = "../modules/observability"
+
+  name               = local.name
+  api_log_group_name = module.ecs.log_group_names["api"]
+  metric_namespace   = "SocialOps/${var.environment}"
+
+  alert_email            = var.alert_email
+  cluster_name           = module.ecs.cluster_name
+  service_names          = module.ecs.service_names
+  alb_arn                = module.alb.arn
+  target_group_arns      = module.alb.target_group_arns
+  db_instance_identifier = module.database.instance_identifier
 }

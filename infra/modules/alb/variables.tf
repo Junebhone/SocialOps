@@ -35,10 +35,19 @@ variable "api_port" {
   default     = 8000
 }
 
-variable "api_listener_port" {
-  description = "Public port for the API listener."
-  type        = number
-  default     = 8000
+variable "certificate_arn" {
+  description = "ACM certificate ARN used by the HTTPS listener."
+  type        = string
+}
+
+variable "web_hostname" {
+  description = "Public hostname routed to the web target group."
+  type        = string
+}
+
+variable "api_hostname" {
+  description = "Public hostname routed to the API target group."
+  type        = string
 }
 
 variable "web_health_path" {

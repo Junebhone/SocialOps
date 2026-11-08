@@ -17,3 +17,9 @@ variable "queue_arn" {
   description = "The SQS job queue (modules/queue)."
   type        = string
 }
+
+variable "error_route_parameter_arn" {
+  description = "ARN of the SSM parameter that switches GET /debug/error. The API role may read it. Null grants nothing."
+  type        = string
+  default     = null
+}

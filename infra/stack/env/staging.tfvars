@@ -6,6 +6,7 @@
 environment = "staging"
 aws_region  = "us-east-1"
 disposable  = false
+domain_name = "socialops.website"
 
 vpc_cidr           = "10.20.0.0/16"
 single_nat_gateway = false
@@ -40,3 +41,7 @@ llm_model_vision = "us.anthropic.claude-sonnet-5-v1:0"
 
 log_retention_days = 30
 container_insights = true
+
+# GET /debug/error (the 5xx demo route). Keep false: true lets anyone who can
+# reach the API raise the 5xx alarm. Flip to true only for the demo, then back.
+enable_error_route = false

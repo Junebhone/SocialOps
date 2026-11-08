@@ -1,19 +1,7 @@
-# One public ALB, two listeners, mirroring the two ports compose publishes.
+# One public ALB. Port 80 redirects to HTTPS and port 443 routes by hostname:
+# app.<domain> to the web target group and api.<domain> to the API target group.
 #
-# The browser calls the API directly rather than through Next.js
-# (docs/architecture-phase1.md), so the API needs a public address of its own.
-# Path-based routing on one listener would need the API's routes under a common
-# prefix, which they are not. A second listener port keeps the app unchanged:
-# NEXT_PUBLIC_API_URL becomes http://<alb>:8000, exactly as it is
-# http://localhost:8000 in compose.
-#
-# HTTP only. HTTPS needs a domain and an ACM certificate, and Route 53 plus WAF
-# arrive with Phase 5 in the README roadmap.
-#
-# Health checks use /health (liveness), not /health/ready. ECS replaces a task
-# that fails its target-group check, so a readiness check here would restart
-# every API task whenever RDS blipped: the restart loop D28 warns about.
-# Readiness belongs on an alarm (Module 5), not on the thing that kills tasks.
+# Health checks use /health (liveness), not /health/ready.
 
 resource "aws_lb" "this" {
   name               = var.name
@@ -24,17 +12,14 @@ resource "aws_lb" "this" {
 
   drop_invalid_header_fields = true
   enable_deletion_protection = var.deletion_protection
-
-  # Image uploads go through this ALB to the API. 60s is the default and
-  # comfortably covers a 10 MB upload.
-  idle_timeout = 60
+  idle_timeout               = 60
 }
 
 resource "aws_lb_target_group" "web" {
   name        = "${var.name}-web"
   port        = var.web_port
   protocol    = "HTTP"
-  target_type = "ip" # Fargate tasks register by ENI address
+  target_type = "ip"
   vpc_id      = var.vpc_id
 
   deregistration_delay = 30
@@ -68,24 +53,68 @@ resource "aws_lb_target_group" "api" {
   }
 }
 
-resource "aws_lb_listener" "web" {
+resource "aws_lb_listener" "http" {
   load_balancer_arn = aws_lb.this.arn
   port              = 80
   protocol          = "HTTP"
 
   default_action {
-    type             = "forward"
-    target_group_arn = aws_lb_target_group.web.arn
+    type = "redirect"
+
+    redirect {
+      port        = "443"
+      protocol    = "HTTPS"
+      status_code = "HTTP_301"
+    }
   }
 }
 
-resource "aws_lb_listener" "api" {
+resource "aws_lb_listener" "https" {
   load_balancer_arn = aws_lb.this.arn
-  port              = var.api_listener_port
-  protocol          = "HTTP"
+  port              = 443
+  protocol          = "HTTPS"
+  certificate_arn   = var.certificate_arn
+  ssl_policy        = "ELBSecurityPolicy-TLS13-1-2-2021-06"
 
   default_action {
+    type = "fixed-response"
+
+    fixed_response {
+      content_type = "text/plain"
+      message_body = "Not found"
+      status_code  = "404"
+    }
+  }
+}
+
+resource "aws_lb_listener_rule" "web" {
+  listener_arn = aws_lb_listener.https.arn
+  priority     = 10
+
+  action {
+    type             = "forward"
+    target_group_arn = aws_lb_target_group.web.arn
+  }
+
+  condition {
+    host_header {
+      values = [var.web_hostname]
+    }
+  }
+}
+
+resource "aws_lb_listener_rule" "api" {
+  listener_arn = aws_lb_listener.https.arn
+  priority     = 20
+
+  action {
     type             = "forward"
     target_group_arn = aws_lb_target_group.api.arn
+  }
+
+  condition {
+    host_header {
+      values = [var.api_hostname]
+    }
   }
 }

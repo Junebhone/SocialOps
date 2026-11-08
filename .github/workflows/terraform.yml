@@ -77,6 +77,8 @@ jobs:
       AWS_PLAN_ROLE_ARN: ${{ vars.AWS_PLAN_ROLE_ARN }}
       TF_STATE_BUCKET: ${{ vars.TF_STATE_BUCKET }}
       AWS_REGION: ${{ vars.AWS_REGION }}
+      # Not in git (public repo). Sensitive in Terraform, so plans print (sensitive value).
+      TF_VAR_alert_email: ${{ vars.ALERT_EMAIL }}
     steps:
       - name: Is AWS configured?
         id: aws

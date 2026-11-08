@@ -28,6 +28,11 @@ variable "aws_region" {
   default     = "us-east-1"
 }
 
+variable "domain_name" {
+  description = "Public Route 53 domain used by the application."
+  type        = string
+}
+
 variable "allowed_account_ids" {
   description = "If non-empty, the AWS provider refuses to run against any other account."
   type        = list(string)
@@ -158,4 +163,16 @@ variable "ollama_base_url" {
   description = "OLLAMA_BASE_URL. config.py requires it even when the provider is bedrock, so it is passed empty rather than omitted. Set it only if you run Ollama on a host the VPC can reach."
   type        = string
   default     = ""
+}
+
+variable "enable_error_route" {
+  description = "ENABLE_ERROR_ROUTE. When true, GET /debug/error returns a deliberate 500 so the 5xx metric and alarm can be demonstrated. Anyone who can reach the API can then call it, so leave it false except during a demo."
+  type        = bool
+  default     = false
+}
+
+variable "alert_email" {
+  description = "Address that receives CloudWatch alarm notifications (SNS). Locally: an ignored *.auto.tfvars file passed with -var-file. In CI: the ALERT_EMAIL repository variable (TF_VAR_alert_email). Never committed: the repo is public."
+  type        = string
+  sensitive   = true
 }

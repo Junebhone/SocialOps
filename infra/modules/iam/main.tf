@@ -96,6 +96,15 @@ data "aws_iam_policy_document" "api" {
     actions   = ["sqs:SendMessage", "sqs:GetQueueAttributes", "sqs:GetQueueUrl"]
     resources = [var.queue_arn]
   }
+
+  dynamic "statement" {
+    for_each = var.error_route_parameter_arn == null ? [] : [var.error_route_parameter_arn]
+    content {
+      sid       = "ReadErrorRouteSwitch"
+      actions   = ["ssm:GetParameter"]
+      resources = [statement.value]
+    }
+  }
 }
 
 resource "aws_iam_role_policy" "api" {
