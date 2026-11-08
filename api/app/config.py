@@ -41,6 +41,10 @@ class Settings(BaseSettings):
     # GET /debug/error returns a deliberate 500 when true, so the 5xx metric and
     # alarm can be demonstrated on demand. Off unless the environment opts in.
     enable_error_route: bool = False
+    # Name of an SSM parameter ("true"/"false") that also switches the route, read at
+    # request time so it can be flipped without a redeploy. Unset (local dev) means the
+    # env flag alone decides. Any read failure counts as off.
+    error_route_ssm_parameter: str | None = None
 
     # The tier → model map deliberately lives ONLY in `worker/worker/config.py` (D6).
     # The API never calls a model, so a copy here would be a second source of truth for

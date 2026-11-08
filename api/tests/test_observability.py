@@ -90,3 +90,38 @@ def test_a_normal_request_is_not_counted(log: RecordingLog) -> None:
     assert response.status_code == 200
     assert log.five_xx() == []
     assert log.lines[0][1]["status_code"] == 200
+
+
+def test_ssm_flag_turns_route_on_without_redeploy(
+    monkeypatch: pytest.MonkeyPatch, log: RecordingLog
+) -> None:
+    from app.routers import debug
+
+    monkeypatch.setattr(get_settings(), "error_route_ssm_parameter", "/x/flag")
+    monkeypatch.setattr(debug, "_read_ssm_flag", lambda name, region: True)
+
+    assert client.get("/debug/error").status_code == 500
+
+
+def test_ssm_flag_false_keeps_route_off(
+    monkeypatch: pytest.MonkeyPatch, log: RecordingLog
+) -> None:
+    from app.routers import debug
+
+    monkeypatch.setattr(get_settings(), "error_route_ssm_parameter", "/x/flag")
+    monkeypatch.setattr(debug, "_read_ssm_flag", lambda name, region: False)
+
+    assert client.get("/debug/error").status_code == 404
+    assert log.five_xx() == []
+
+
+def test_unreadable_ssm_parameter_counts_as_off(monkeypatch: pytest.MonkeyPatch) -> None:
+    from app.routers import debug
+
+    class Denied:
+        def get_parameter(self, **_: object) -> None:
+            raise RuntimeError("AccessDenied")
+
+    monkeypatch.setattr(debug.boto3, "client", lambda *a, **k: Denied())
+
+    assert debug._read_ssm_flag("/x/flag", "us-east-1") is False
