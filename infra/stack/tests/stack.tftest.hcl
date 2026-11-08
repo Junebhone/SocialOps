@@ -58,6 +58,19 @@ run "environment_plans" {
     condition     = keys(output.ecs_service_names) == ["api", "web", "worker"]
     error_message = "Expected exactly three ECS services: api, web, worker."
   }
+
+  # The alarm and dashboard (Member 3) look the 5xx metric up by these names.
+  assert {
+    condition     = output.api_5xx_metric == { namespace = "SocialOps/${var.environment}", name = "Api5xxCount" }
+    error_message = "The API 5xx metric must be SocialOps/<environment>/Api5xxCount."
+  }
+
+  # Committed tfvars must keep the demo error route off; it is flipped on only
+  # for the duration of a demo.
+  assert {
+    condition     = var.enable_error_route == false
+    error_message = "enable_error_route must be false in committed tfvars."
+  }
 }
 
 run "rejects_unknown_environment" {
