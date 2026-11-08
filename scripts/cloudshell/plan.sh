@@ -1,13 +1,13 @@
 #!/usr/bin/env bash
 # Read-only: plans infra/bootstrap and infra/stack (dev) from AWS CloudShell.
 # Nothing is applied. Prints only resource actions, no values.
-export PATH="$HOME/bin:$PATH" AWS_PAGER="" TF_PLUGIN_CACHE_DIR="$HOME/.tfcache"
+export PATH="$HOME/bin:$PATH" AWS_PAGER="" TF_PLUGIN_CACHE_DIR="/tmp/tfcache" TMPDIR="/tmp"
 export TF_VAR_alert_email="${ALERT_EMAIL:?set ALERT_EMAIL first}"
 mkdir -p "$TF_PLUGIN_CACHE_DIR"
 B="socialops-tfstate-$(aws sts get-caller-identity --query Account --output text)"
 PAT='^Plan:|No changes|Error|will be (created|updated|destroyed)|must be replaced'
-rm -rf ~/so/infra/bootstrap/.terraform ~/so/infra/stack/.terraform
-df -h ~ | tail -1
+rm -rf "$HOME/.tfcache" ~/so/infra/bootstrap/.terraform ~/so/infra/stack/.terraform
+df -h ~ /tmp | tail -2
 cd ~/so && git pull -q && git log --oneline -1
 
 echo "=== BOOTSTRAP"
