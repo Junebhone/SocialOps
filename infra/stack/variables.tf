@@ -170,3 +170,8 @@ variable "enable_error_route" {
   type        = bool
   default     = false
 }
+
+variable "alert_email" {
+  description = "Address that receives CloudWatch alarm notifications (SNS). Set in an uncommitted *.auto.tfvars file."
+  type        = string
+}
