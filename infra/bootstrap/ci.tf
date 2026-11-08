@@ -218,3 +218,135 @@ resource "aws_iam_role_policy" "ci_ecr_push" {
   role   = aws_iam_role.ci_ecr_push.id
   policy = data.aws_iam_policy_document.ci_ecr_push.json
 }
+
+# --- Deploy role -------------------------------------------------------------
+#
+# Assumed by the deploy job in .github/workflows/ci.yml, main branch only. It
+# registers new task definition revisions that differ from the current one only
+# in image tag, updates the three services, runs the migrate task, and rolls
+# back to the previously recorded revisions. It cannot touch infrastructure,
+# IAM, databases, secrets or storage, and it cannot apply Terraform.
+#
+# The deploy job does not use `environment:`. A job with an environment sends
+# sub = repo:owner/name:environment:<env> instead of ...:ref:refs/heads/main,
+# which would make this trust depend on a GitHub setting rather than on the
+# branch. Without it the trust below is main-only by construction.
+
+locals {
+  deploy_cluster      = "${var.project}-dev"
+  deploy_cluster_arn  = "arn:${local.partition}:ecs:${local.region}:${local.account_id}:cluster/${local.deploy_cluster}"
+  deploy_service_arns = "arn:${local.partition}:ecs:${local.region}:${local.account_id}:service/${local.deploy_cluster}/*"
+  deploy_task_arns    = "arn:${local.partition}:ecs:${local.region}:${local.account_id}:task/${local.deploy_cluster}/*"
+  deploy_migrate_def  = "arn:${local.partition}:ecs:${local.region}:${local.account_id}:task-definition/${local.deploy_cluster}-migrate:*"
+  deploy_pass_roles = [
+    for r in ["ecs-execution", "api-task", "worker-task"] :
+    "arn:${local.partition}:iam::${local.account_id}:role/${local.deploy_cluster}-${r}"
+  ]
+}
+
+data "aws_iam_policy_document" "ci_deploy_trust" {
+  statement {
+    actions = ["sts:AssumeRoleWithWebIdentity"]
+
+    principals {
+      type        = "Federated"
+      identifiers = [local.github_oidc_provider_arn]
+    }
+
+    condition {
+      test     = "StringEquals"
+      variable = "${local.github_host}:aud"
+      values   = ["sts.amazonaws.com"]
+    }
+
+    condition {
+      test     = "StringEquals"
+      variable = "${local.github_host}:sub"
+      values   = [for p in local.github_subject_prefixes : "${p}:ref:refs/heads/main"]
+    }
+  }
+}
+
+resource "aws_iam_role" "ci_deploy" {
+  name                 = "${var.project}-ci-deploy"
+  description          = "Deploy to ECS dev from GitHub Actions on main, and roll back. No infrastructure or data access."
+  assume_role_policy   = data.aws_iam_policy_document.ci_deploy_trust.json
+  max_session_duration = 3600
+}
+
+data "aws_iam_policy_document" "ci_deploy" {
+  # Task definition actions do not support resource-level scoping.
+  statement {
+    sid       = "TaskDefinitions"
+    actions   = ["ecs:DescribeTaskDefinition", "ecs:RegisterTaskDefinition"]
+    resources = ["*"]
+  }
+
+  statement {
+    sid       = "ReadAndUpdateServices"
+    actions   = ["ecs:DescribeServices", "ecs:UpdateService"]
+    resources = [local.deploy_service_arns]
+  }
+
+  statement {
+    sid       = "RunMigrateTask"
+    actions   = ["ecs:RunTask"]
+    resources = [local.deploy_migrate_def]
+
+    condition {
+      test     = "ArnEquals"
+      variable = "ecs:cluster"
+      values   = [local.deploy_cluster_arn]
+    }
+  }
+
+  statement {
+    sid       = "WatchTasks"
+    actions   = ["ecs:DescribeTasks"]
+    resources = [local.deploy_task_arns]
+  }
+
+  statement {
+    sid       = "ListTasks"
+    actions   = ["ecs:ListTasks"]
+    resources = ["*"]
+
+    condition {
+      test     = "ArnEquals"
+      variable = "ecs:cluster"
+      values   = [local.deploy_cluster_arn]
+    }
+  }
+
+  # Only the task and execution roles, only to ECS tasks.
+  statement {
+    sid       = "PassTaskRoles"
+    actions   = ["iam:PassRole"]
+    resources = local.deploy_pass_roles
+
+    condition {
+      test     = "StringEquals"
+      variable = "iam:PassedToService"
+      values   = ["ecs-tasks.amazonaws.com"]
+    }
+  }
+
+  statement {
+    sid       = "CheckImagesExist"
+    actions   = ["ecr:DescribeImages"]
+    resources = values(module.ecr.repository_arns)
+  }
+
+  # Migration output, to show it in the job log when the migrate task fails.
+  statement {
+    sid       = "ReadMigrateLogs"
+    actions   = ["logs:GetLogEvents"]
+    resources = ["arn:${local.partition}:logs:${local.region}:${local.account_id}:log-group:/ecs/${local.deploy_cluster}/migrate:log-stream:*"]
+  }
+}
+
+resource "aws_iam_role_policy" "ci_deploy" {
+  name   = "deploy-dev"
+  role   = aws_iam_role.ci_deploy.id
+  policy = data.aws_iam_policy_document.ci_deploy.json
+}
