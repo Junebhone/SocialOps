@@ -1,8 +1,9 @@
 """A controlled 5xx, for proving the error metric and alarm (Milestone 6).
 
 Off by default: unless ENABLE_ERROR_ROUTE is true, or the SSM parameter named by
-ERROR_ROUTE_SSM_PARAMETER holds "true", the route answers 404 as if it did not exist, so the public cannot trigger alerts on a deployment that has not
-opted in. Two modes cover both ways a real request fails:
+ERROR_ROUTE_SSM_PARAMETER holds "true", the route answers 404 as if it did not
+exist, so the public cannot trigger alerts on a deployment that has not opted in.
+Two modes cover both ways a real request fails:
 
 - `kind=status` (default): the handler returns a 500 response. Logged by the
   normal `request` line with status_code 500.
