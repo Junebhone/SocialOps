@@ -33,3 +33,6 @@ infra/modules/**/.terraform.lock.hcl
 # points (./storage, api/storage, worker/storage). Without this line it also
 # swallows the S3 module, and git add skips it without a word.
 !infra/modules/storage/
+
+# Local-only values (team email etc.)
+*.auto.tfvars
