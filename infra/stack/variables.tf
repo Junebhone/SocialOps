@@ -164,3 +164,14 @@ variable "ollama_base_url" {
   type        = string
   default     = ""
 }
+
+variable "enable_error_route" {
+  description = "ENABLE_ERROR_ROUTE. When true, GET /debug/error returns a deliberate 500 so the 5xx metric and alarm can be demonstrated. Anyone who can reach the API can then call it, so leave it false except during a demo."
+  type        = bool
+  default     = false
+}
+
+variable "alert_email" {
+  description = "Address that receives CloudWatch alarm notifications (SNS). Set in an uncommitted *.auto.tfvars file."
+  type        = string
+}

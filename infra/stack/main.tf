@@ -54,6 +54,8 @@ locals {
     # Not read by config.py yet (extra="ignore" drops it). Wired now so the
     # arq -> SQS change needs a code change and no infrastructure change.
     SQS_QUEUE_URL = module.queue.queue_url
+    # GET /debug/error answers 404 unless this is "true" (app/routers/debug.py).
+    ENABLE_ERROR_ROUTE = tostring(var.enable_error_route)
   }
 }
 
@@ -166,4 +168,20 @@ module "ecs" {
   services           = var.services
   log_retention_days = var.log_retention_days
   container_insights = var.container_insights
+}
+
+# Log metric filters (Member 2) plus the dashboard and alarms (Member 3).
+module "observability" {
+  source = "../modules/observability"
+
+  name               = local.name
+  api_log_group_name = module.ecs.log_group_names["api"]
+  metric_namespace   = "SocialOps/${var.environment}"
+
+  alert_email            = var.alert_email
+  cluster_name           = module.ecs.cluster_name
+  service_names          = module.ecs.service_names
+  alb_arn                = module.alb.arn
+  target_group_arns      = module.alb.target_group_arns
+  db_instance_identifier = module.database.instance_identifier
 }
