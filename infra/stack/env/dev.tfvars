@@ -41,3 +41,7 @@ llm_model_text   = "us.anthropic.claude-sonnet-5-v1:0"
 llm_model_vision = "us.anthropic.claude-sonnet-5-v1:0"
 
 log_retention_days = 7
+
+# GET /debug/error (the 5xx demo route). Keep false: true lets anyone who can
+# reach the API raise the 5xx alarm. Flip to true only for the demo, then back.
+enable_error_route = false

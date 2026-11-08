@@ -51,10 +51,15 @@ async def request_id_middleware(
     try:
         response = await call_next(request)
     except Exception:
+        # An unhandled exception never produces a Response here, but the client
+        # receives a 500 from Starlette's ServerErrorMiddleware. Log that status
+        # explicitly: the CloudWatch metric filter counts 5xx by status_code, and
+        # without it every crash would be invisible to the metric.
         log.exception(
             "request.failed",
             method=request.method,
             path=request.url.path,
+            status_code=500,
             duration_ms=round((time.perf_counter() - started) * 1000, 2),
         )
         raise
