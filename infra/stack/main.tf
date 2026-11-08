@@ -32,6 +32,9 @@ locals {
   name       = "${var.project}-${var.environment}"
   account_id = data.aws_caller_identity.current.account_id
 
+  web_hostname = var.environment == "dev" ? "app.${var.domain_name}" : "staging.${var.domain_name}"
+  api_hostname = var.environment == "dev" ? "api.${var.domain_name}" : "api-staging.${var.domain_name}"
+
   images = {
     for svc, repo in data.aws_ecr_repository.this : svc => "${repo.repository_url}:${var.image_tag}"
   }
@@ -133,6 +136,10 @@ module "alb" {
   vpc_id            = module.network.vpc_id
   public_subnet_ids = module.network.public_subnet_ids
   security_group_id = module.security.alb_security_group_id
+
+  certificate_arn = aws_acm_certificate_validation.socialops.certificate_arn
+  web_hostname    = local.web_hostname
+  api_hostname    = local.api_hostname
 
   deletion_protection = !var.disposable
 }

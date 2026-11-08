@@ -8,25 +8,32 @@ output "arn" {
   value       = aws_lb.this.arn
 }
 
+output "zone_id" {
+  description = "Route 53 hosted zone ID of the ALB."
+  value       = aws_lb.this.zone_id
+}
+
 output "web_url" {
   description = "Where the dashboard is served."
-  value       = "http://${aws_lb.this.dns_name}"
+  value       = "https://${var.web_hostname}"
 }
 
 output "api_url" {
   description = "The API as the browser sees it. Becomes NEXT_PUBLIC_API_URL."
-  value       = "http://${aws_lb.this.dns_name}:${var.api_listener_port}"
+  value       = "https://${var.api_hostname}"
 }
 
-# The target groups are handed to ECS services. An ECS service cannot attach
-# to a target group that no listener uses yet ("target group does not have an
-# associated load balancer"), so these outputs wait for the listeners.
 output "target_group_arns" {
   description = "Target group per load-balanced service: web and api."
+
   value = {
     web = aws_lb_target_group.web.arn
     api = aws_lb_target_group.api.arn
   }
 
-  depends_on = [aws_lb_listener.web, aws_lb_listener.api]
+  depends_on = [
+    aws_lb_listener.http,
+    aws_lb_listener_rule.web,
+    aws_lb_listener_rule.api,
+  ]
 }
