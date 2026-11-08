@@ -9,6 +9,7 @@ needs (it owns a connection pool), so it is built in the lifespan and reached
 through `request.state` rather than being a module global.
 """
 
+import os
 from collections.abc import AsyncIterator, Awaitable
 from contextlib import asynccontextmanager
 from typing import Literal, TypedDict
@@ -127,6 +128,13 @@ async def health() -> Health:
     return Health(status="ok", version=app.version, llm_provider=settings.llm_provider)
 
 
+# DEMO FAILURE INJECTION (Milestone 6 rollback proof). While True, a task running on
+# ECS Fargate reports itself not ready; CI and local runs are unaffected because
+# AWS_EXECUTION_ENV is only set on Fargate. Liveness (/health) still passes, so the
+# ECS circuit breaker does not trip: only the pipeline's health check catches it.
+_DEMO_BREAK_READINESS = True
+
+
 @app.get("/health/ready", response_model=Readiness)
 async def ready(session: SessionDep, response: Response) -> Readiness:
     """Readiness: can this process serve a real request?
@@ -141,6 +149,11 @@ async def ready(session: SessionDep, response: Response) -> Readiness:
     down. "Postgres is unreachable" and "the API is broken" need to look
     different at 2am.
     """
+    if _DEMO_BREAK_READINESS and os.environ.get("AWS_EXECUTION_ENV"):
+        response.status_code = 503
+        log.warning("readiness.degraded", database=False, redis=False, reason="demo")
+        return Readiness(status="degraded", database=False, redis=False)
+
     database = await _can_reach(_ping_database(session))
     redis = await _can_reach(_ping_redis())
 
