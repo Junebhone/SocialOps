@@ -22,7 +22,7 @@ Status: done = verified with real output; TODO = not yet produced. Update as evi
 | Plan still clean after pipeline deploy | `evidence/terraform-plan-after-deploy.txt` | done |
 | Written analysis (1 page) | `docs/milestone6/Milestone6_Analysis.pdf` (draft; has TODO markers) | draft |
 | Slides | `docs/milestone6/Milestone6_SocialOps.pptx` (screenshot placeholders) | draft |
-| Demo video (OneDrive, shared with sdesini@, krajan@, skolanu@cougarnet.uh.edu) | link: | TODO |
+| Demo video (OneDrive, shared with the three instructors named in the brief) | link: | TODO |
 
 | Security and cost checklist | `docs/milestone6/evidence/security-checklist.md` | done |
 | Third pipeline run (revert, green) | https://github.com/Junebhone/SocialOps/actions/runs/42537260649, SHA 5594ccb53ec4f7cebcc26bbe0a016bbaa0c74669 | done |
