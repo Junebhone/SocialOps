@@ -4,7 +4,7 @@ Status: done = verified with real output; TODO = not yet produced. Update as evi
 
 | Artifact | Link / path | Status |
 |---|---|---|
-| Live HTTPS URL (web) | https://app.socialops.website (returns 307, then 200) | done (checked 2026-11-08) |
+| Live HTTPS URL (web) | https://app.socialops.website (returns 307, then 200) | done; screenshot `evidence/live-app.png` |
 | Live HTTPS URL (API) | https://api.socialops.website/health/ready returns `{"status":"ok","database":true,"redis":true}` | done (checked 2026-11-08) |
 | Repo | https://github.com/Junebhone/SocialOps, branch `main`, demonstrated commit SHA: | TODO |
 | Terraform files | `infra/stack`, `infra/modules/*` (incl. `observability`), `infra/bootstrap` | done (observability in PR #13/#14, not merged) |
@@ -16,7 +16,7 @@ Status: done = verified with real output; TODO = not yet produced. Update as evi
 | Alert policy screenshot | `evidence/alarm-details.png`, `alarm-actions.png`, `alarm-graph.png` | done |
 | Received alert email screenshot | `evidence/alert-email-alarm.png`, `alert-email-ok.png` | done |
 | Controlled 5xx demo (log line by request_id, metric rise) | `evidence/controlled-error-request.png` (HTTP 500, request_id 25af8b47971440e3b4dfafd12437869e), `json-log-line.png`, `json-log-line-query.png`, `metric-rise.png` (1 at 23:52 UTC), `route-off.png`; full pack `member2-evidence.pdf` | done |
-| `terraform plan` showing no changes | `docs/milestone6/evidence/terraform-plan-after-deploy.txt` (refresh on, No changes). Dan to also show it live. | done (CloudShell run) |
+| `terraform plan` showing no changes | `docs/milestone6/evidence/terraform-plan-after-deploy.txt` (refresh on, No changes, CloudShell) and `evidence/terraform-plan.png` (Dan, "No changes"). Dan to also show it live. | done |
 | Pipeline run (a): build, deploy, health check | https://github.com/Junebhone/SocialOps/actions/runs/42529005106 , SHA 9f643eee8a07ed15fe2b7777dfbccc0e1abbd933, `evidence/pipeline.md` | done |
 | Pipeline run (b): failed deploy, automatic rollback, verified | https://github.com/Junebhone/SocialOps/actions/runs/42535888765 , SHA 1e89ac939f9d4c225611a89064ab7d4848bd9845, `evidence/pipeline.md` | done |
 | Plan still clean after pipeline deploy | `evidence/terraform-plan-after-deploy.txt` | done |
@@ -26,3 +26,5 @@ Status: done = verified with real output; TODO = not yet produced. Update as evi
 
 | Security and cost checklist | `docs/milestone6/evidence/security-checklist.md` | done |
 | Third pipeline run (revert, green) | https://github.com/Junebhone/SocialOps/actions/runs/42537260649, SHA 5594ccb53ec4f7cebcc26bbe0a016bbaa0c74669 | done |
+| Certificate | `evidence/acm-issued.png` (*.socialops.website issued, us-east-1) | done |
+| ECS services screenshot (Dan) | pending retake: the Nov 6 capture shows old revision :1 | TODO (Dan) |

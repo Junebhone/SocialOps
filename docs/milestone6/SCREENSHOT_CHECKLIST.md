@@ -42,9 +42,9 @@ alarm state `OK`, nobody sending test requests.
 | 9 | pipeline good run (`pipeline-good.png`, run #47, 9f643ee) | DONE |
 | 10 | pipeline failed + rollback (`pipeline-failed-rollback.png`: health check 10/10 failing, Roll back step) | DONE; still TODO: Summary page showing "ROLLED BACK" |
 | 11 | pipeline revert run (`pipeline-revert.png`, run #51, 5594ccb) | DONE |
-| 12 | health after rollback | TODO Tan |
-| 13 | terraform plan, No changes | TODO Dan |
-| 14 | live app | TODO Tan |
+| 12 | API health after rollback (`api-health-ready.png` from Dan shows /health/ready ok; a post-rollback terminal shot is optional) | DONE (Dan) |
+| 13 | terraform plan, No changes (`terraform-plan.png`) | DONE (Dan) |
+| 14 | live app (`live-app.png`, padlock visible, app.socialops.website/inbox; also `acm-issued.png` for the certificate) | DONE (Dan) |
 | 15 | security controls (`rds-private-cli.png`, `rds-config.png`, `s3-public-block.png`, `git-no-secrets.png`, from Zainab's pack) | DONE (Zainab); optional budget shot still TODO |
 
 ## How to get each one
@@ -76,3 +76,11 @@ Zainab: `metric-rise.png` (CloudWatch > Metrics > All metrics > SocialOps/dev > 
 Dan: `terraform plan` with "No changes" visible.
 
 Crop out personal usernames and emails from the AWS header or inbox before adding screenshots to the public repo.
+
+## Dan's pack (received 2026-11-09)
+
+Saved: `terraform-plan.png`, `api-health-ready.png`, `live-app.png`, `acm-issued.png`.
+
+**Not saved: `ECS_Services_Running.pdf`.** It was captured on November 6 ("Last updated November 6, 2026, 23:56 UTC-6") and shows all three services on
+task definition `:1`. The services now run `api:5`, `worker:5`, `web:4` after the pipeline deploys, so that screenshot contradicts the live state and
+would confuse graders. Dan: retake it (ECS > Clusters > socialops-dev > Services) so it shows the current revisions, 1/1 tasks running.
