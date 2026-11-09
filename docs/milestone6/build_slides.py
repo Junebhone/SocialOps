@@ -94,7 +94,7 @@ placeholder(sl,"CloudWatch dashboard socialops-dev with error counts and resourc
 sl = slide("Alarm and notification")
 bullets(sl,["socialops-dev-api-5xx: Sum of Api5xxCount ≥ 1 in 60 s, 1 period, missing data = notBreaching",
             "ALARM and OK both publish to SNS socialops-dev-alerts → team email",
-            "Measured: one 5xx in the 00:09 UTC minute (Sum 1.0) → ALARM 00:10:04 → email; back to OK 00:16:04. Request-to-email delay: [TODO exact request time]"],size=18,y=1.4)
+            "Controlled 5xx at 23:52:15 UTC → Api5xxCount = 1 → ALARM email about a minute later (17:53 local). Another burst: ALARM 00:10:04 → OK 00:16:04, email each time."],size=18,y=1.4)
 placeholder(sl,"alarm policy page",x=0.6,y=3.2,w=5.9,h=3.7); placeholder(sl,"received alert email",x=6.8,y=3.2,w=5.9,h=3.7)
 
 # 7 terraform

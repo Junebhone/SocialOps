@@ -37,3 +37,11 @@ Revert of the controlled failure: PR #22.
 
 Note: `/health/ready` is not used by the ALB or container health checks (they use `/health`), which is why
 this failure is invisible to the circuit breaker and only the pipeline health check catches it.
+
+## Controlled 5xx test (Member 2)
+
+Request: `GET https://api.socialops.website/debug/error` -> HTTP 500 at 2026-11-08 23:52:15 GMT, `x-request-id: 25af8b47971440e3b4dfafd12437869e`
+(`controlled-error-request.png`). Logs Insights on `/ecs/socialops-dev/api` filtered by that request_id returned exactly 1 record, JSON with
+`status_code` 500, `path` /debug/error (`json-log-line.png`). `Api5xxCount` (Sum, 1 min) = 1 at 23:52 UTC (`metric-rise.png`).
+ALARM email in the inbox at 17:53 local (23:53 UTC if the inbox is US Central). Route switched off 2026-11-09 00:14 UTC; `/debug/error` returns 404 (`route-off.png`).
+A second single 5xx in the 00:09 UTC minute took the alarm to ALARM at 00:10:04 and back to OK at 00:16:04 (`alert-email-alarm.png`, `alert-email-ok.png`).
