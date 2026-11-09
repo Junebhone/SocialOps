@@ -1,0 +1,8 @@
+Captured from AWS CloudShell, account 518668548718, workspace dev, refresh on (no -refresh=false),
+after three pipeline deploys (runs 42529005106, 42535888765 failed+rolled back, 42537260649) and SSM error-route toggles.
+Command: terraform plan -input=false -detailed-exitcode -var-file=env/dev.tfvars   (stack at commit 5594ccb)
+
+exit code 0 (0 = no changes, 2 = changes, 1 = error)
+No changes. Your infrastructure matches the configuration.
+
+Dashboard created just before: "Plan: 1 to add, 0 to change, 0 to destroy." -> "Apply complete! Resources: 1 added, 0 changed, 0 destroyed."

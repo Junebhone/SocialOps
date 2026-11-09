@@ -28,7 +28,12 @@ Deploy role: `socialops-ci-deploy` (OIDC, `ref:refs/heads/main` only).
 
 ## (c) Revert (third run)
 
-Revert of the controlled failure: PR #22. Run URL and SHA: TODO (fill in when it finishes).
+Revert of the controlled failure: PR #22.
+- Run: https://github.com/Junebhone/SocialOps/actions/runs/42537260649 (success, about 7 min)
+- Commit SHA: `5594ccb53ec4f7cebcc26bbe0a016bbaa0c74669`
+- Deploy health check: `try 1/10: api={"status":"ok","database":true,"redis":true} web=200`;
+  `api runs socialops-dev-api:5`, `worker runs socialops-dev-worker:5`, `web runs socialops-dev-web:4`.
+- `terraform plan` (refresh on) afterwards: No changes. See `terraform-plan-after-deploy.txt`.
 
 Note: `/health/ready` is not used by the ALB or container health checks (they use `/health`), which is why
 this failure is invisible to the circuit breaker and only the pipeline health check catches it.
