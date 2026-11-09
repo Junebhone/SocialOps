@@ -32,16 +32,16 @@ alarm state `OK`, nobody sending test requests.
 | # | Screenshot | Status |
 |---|---|---|
 | 1 | dashboard (top, bottom) | DONE |
-| 2 | alarm policy | TODO Tan |
-| 3 | ALARM email | TODO Tan |
-| 4 | inbox list | TODO Tan |
-| 5 | metric filter | TODO Tan |
+| 2 | alarm policy (`alarm-details.png`, `alarm-actions.png`, plus `alarm-graph.png`) | DONE |
+| 3 | ALARM email (`alert-email-alarm.png`) | DONE |
+| 4 | OK email (`alert-email-ok.png`; inbox list shot still optional) | DONE |
+| 5 | metric filter (`metric-filter.png`) | DONE |
 | 6 | metric rise | PLACEHOLDER, Zainab |
 | 7 | JSON log line by request_id | PLACEHOLDER, Zainab |
 | 8 | SNS confirmed | TODO Tan |
-| 9 | pipeline good run | TODO Tan |
-| 10 | pipeline failed + rollback | TODO Tan |
-| 11 | pipeline revert run | TODO Tan |
+| 9 | pipeline good run (`pipeline-good.png`, run #47, 9f643ee) | DONE |
+| 10 | pipeline failed + rollback (`pipeline-failed-rollback.png`: health check 10/10 failing, Roll back step) | DONE; still TODO: Summary page showing "ROLLED BACK" |
+| 11 | pipeline revert run (`pipeline-revert.png`, run #51, 5594ccb) | DONE |
 | 12 | health after rollback | TODO Tan |
 | 13 | terraform plan, No changes | TODO Dan |
 | 14 | live app | TODO Tan |

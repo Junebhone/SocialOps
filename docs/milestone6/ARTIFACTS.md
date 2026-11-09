@@ -9,12 +9,12 @@ Status: done = verified with real output; TODO = not yet produced. Update as evi
 | Repo | https://github.com/Junebhone/SocialOps, branch `main`, demonstrated commit SHA: | TODO |
 | Terraform files | `infra/stack`, `infra/modules/*` (incl. `observability`), `infra/bootstrap` | done (observability in PR #13/#14, not merged) |
 | Pipeline workflow file | `.github/workflows/ci.yml`, `scripts/ci/deploy.sh` (merged, PR #15) | done |
-| Log-based metric definition | `infra/modules/observability/metric.tf`; filter `{ $.status_code >= 500 }` -> `SocialOps/dev` `Api5xxCount` | merged and live; TODO `aws logs describe-metric-filters` output in evidence/ |
+| Log-based metric definition (screenshot `evidence/metric-filter.png`) | `infra/modules/observability/metric.tf`; filter `{ $.status_code >= 500 }` -> `SocialOps/dev` `Api5xxCount` | done; console screenshot `evidence/metric-filter.png` |
 | Dashboard definition (JSON) | `docs/milestone6/evidence/dashboard.json` (`aws cloudwatch get-dashboard --dashboard-name socialops-dev`). Dashboard is live. | TODO export |
 | Alarm definition (JSON) | `docs/milestone6/evidence/alarm.json` (`aws cloudwatch describe-alarms`) | TODO |
 | Dashboard screenshot | `docs/milestone6/evidence/dashboard-top.png`, `dashboard-bottom.png` | done |
-| Alert policy screenshot | `docs/milestone6/evidence/alarm-policy.png` | TODO (Tan) |
-| Received alert email screenshot | `docs/milestone6/evidence/alert-email.png` | TODO (Tan) |
+| Alert policy screenshot | `evidence/alarm-details.png`, `alarm-actions.png`, `alarm-graph.png` | done |
+| Received alert email screenshot | `evidence/alert-email-alarm.png`, `alert-email-ok.png` | done |
 | Controlled 5xx demo (log line by request_id, metric rise) | `evidence/metric-rise.png`, `evidence/json-log-line.png` (placeholders, Zainab to replace) | PLACEHOLDER |
 | `terraform plan` showing no changes | `docs/milestone6/evidence/terraform-plan-after-deploy.txt` (refresh on, No changes). Dan to also show it live. | done (CloudShell run) |
 | Pipeline run (a): build, deploy, health check | https://github.com/Junebhone/SocialOps/actions/runs/42529005106 , SHA 9f643eee8a07ed15fe2b7777dfbccc0e1abbd933, `evidence/pipeline.md` | done |
