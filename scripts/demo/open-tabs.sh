@@ -8,7 +8,7 @@ tabs=(
   "https://app.socialops.website"                                   # 1  live app
   "https://api.socialops.website/health/ready"                      # 2  API health
   "$CW#logsV2:logs-insights"                                        # 3  find the JSON log line
-  "$CW#metricsV2?graph=~()"                                         # 4  metric Api5xxCount
+  "$CW#logsV2:log-groups/log-group/\$252Fecs\$252Fsocialops-dev\$252Fapi"   # 4  metric filter (Metric filters tab)
   "$CW#dashboards/dashboard/socialops-dev"                          # 5  dashboard
   "$CW#alarmsV2:alarm/socialops-dev-api-5xx"                        # 6  alarm policy
   "$R/actions"                                                      # 7  pipeline runs
@@ -20,7 +20,7 @@ for t in "${tabs[@]}"; do open "$t"; sleep 0.6; done
 cat <<'TXT'
 
 Tabs opened, left to right:
-  1 app   2 API health   3 Logs Insights   4 Metrics   5 Dashboard
+  1 app   2 API health   3 Logs Insights   4 Log group (Metric filters)   5 Dashboard
   6 Alarm 7 GitHub Actions   8 good run   9 failed/rollback run   10 CloudShell
 
 Before you press record (off camera):
