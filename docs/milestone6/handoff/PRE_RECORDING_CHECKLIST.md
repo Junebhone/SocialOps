@@ -10,8 +10,8 @@
 - [x] Written analysis (one page), full slide deck, artifact pack, recording script
 
 ## To do before you press record
-- [ ] **Screenshots still missing** (send them and I will save them):
-  1. The pipeline run **Summary page** of the failed run showing "ROLLED BACK": https://github.com/Junebhone/SocialOps/actions/runs/42535888765 → click **Summary**.
+- [ ] **Screenshots still missing** (optional, send them and I will save them):
+  1. ~~Rollback Summary page~~ not needed: the Roll back step screenshot (`pipeline-rollback-step.png`) is saved and is better evidence.
   2. **ECS services, current**: ECS → Clusters → socialops-dev → Services. Must show `api:5`, `worker:5`, `web:4`, 1/1 running. (Dan's was from Nov 6 and shows `:1`; do not use it.)
   3. Optional: SNS subscription **Confirmed**; Budget `SocialOps-Budget`.
 - [ ] **Make the 2-slide deck** from `README_DESIGN_2_SLIDES.md` and open it for a check.

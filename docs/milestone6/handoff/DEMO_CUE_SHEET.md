@@ -108,7 +108,7 @@ Say:
 - Open the Deploy job, step "Health check and revision check": "The health check fails on all ten tries."
 - Step "Roll back": "The pipeline restores the previous revisions, waits for stability, and checks again."
 - "It shows the old version running: api revision 3, worker 3, web 2. Status ok."
-- "The run is red on purpose, and the summary says ROLLED BACK." (Backup: tab 9, run 42535888765.)
+- "The run is red on purpose. The Roll back step shows the old version answering ok." (Backup: tab 9, run 42535888765.)
 - **RUN** `curl -s https://api.socialops.website/health/ready` → `{"status":"ok","database":true,"redis":true}`
 - "The previous working version is serving traffic."
 

@@ -16,7 +16,7 @@ originals for grading can stay uncropped. Region: us-east-1 (N. Virginia). Slide
 | 7 | `json-log-line.png` (done, from Zainab) | The JSON log line found by `request_id` (status_code 500, path /debug/error). | CloudWatch Logs Insights or log events | Zainab | 3 |
 | 8 | `sns-confirmed.png` | SNS topic `socialops-dev-alerts`, email subscription status Confirmed. | SNS > Topics > socialops-dev-alerts > Subscriptions | Tan | 6 |
 | 9 | `pipeline-good.png` | Run 42529005106 (green): job list and summary with rollback target and new revisions. | https://github.com/Junebhone/SocialOps/actions/runs/42529005106 | Tan | 8 |
-| 10 | `pipeline-failed-rollback.png` | Run 42535888765 (red): health check failing 10/10, the "Roll back" step, summary "ROLLED BACK". | https://github.com/Junebhone/SocialOps/actions/runs/42535888765 | Tan | 9 |
+| 10 | `pipeline-failed-rollback.png` | Run 42535888765 (red): health check failing 10/10, the "Roll back" step (old revisions api:3, worker:3, web:2 answering ok). | https://github.com/Junebhone/SocialOps/actions/runs/42535888765 | Tan | 9 |
 | 11 | `pipeline-revert.png` | Run 42537260649 (green) after the revert. | https://github.com/Junebhone/SocialOps/actions/runs/42537260649 | Tan | 9 |
 | 12 | `health-after-rollback.png` | Terminal: `curl https://api.socialops.website/health/ready` returning ok. | Terminal | Tan | 9 |
 | 13 | `terraform-plan.png` | `terraform plan` (refresh on) ending "No changes. Your infrastructure matches the configuration." Workspace dev visible. | Terminal | Dan | 7 |
@@ -40,7 +40,7 @@ alarm state `OK`, nobody sending test requests.
 | 7 | JSON log line by request_id (`json-log-line.png`, `json-log-line-query.png`, `controlled-error-request.png`, `route-off.png`) | DONE (Zainab) |
 | 8 | SNS confirmed | TODO Tan |
 | 9 | pipeline good run (`pipeline-good.png`, run #47, 9f643ee) | DONE |
-| 10 | pipeline failed + rollback (`pipeline-failed-rollback.png`: health check 10/10 failing, Roll back step) | DONE; still TODO: Summary page showing "ROLLED BACK" |
+| 10 | pipeline failed + rollback (`pipeline-failed-rollback.png`: health check 10/10 failing, Roll back step) | DONE; also `pipeline-rollback-step.png` (Roll back step expanded, old revisions verified) |
 | 11 | pipeline revert run (`pipeline-revert.png`, run #51, 5594ccb) | DONE |
 | 12 | API health after rollback (`api-health-ready.png` from Dan shows /health/ready ok; a post-rollback terminal shot is optional) | DONE (Dan) |
 | 13 | terraform plan, No changes (`terraform-plan.png`) | DONE (Dan) |
@@ -63,7 +63,7 @@ lands on the Desktop. Rename it to the name in the table and copy it into `docs/
 6. **SNS**: Simple Notification Service > Topics > `socialops-dev-alerts` > Subscriptions. Capture status **Confirmed**.
 7. **Pipeline runs**: open each run URL in the table above. For the good run, capture the job list and the **Summary**
    (scroll to the rollback target and new revisions). For the red run, expand the Deploy job: the health check
-   failing 10 times, the **Roll back** step, and the **Summary** line "ROLLED BACK".
+   failing 10 times, and the **Roll back** step with the old revisions answering ok.
 8. **Health after rollback**: in a terminal run `curl https://api.socialops.website/health/ready` and capture the
    `{"status":"ok",...}` line.
 9. **Live app**: open https://app.socialops.website in a browser, capture with the padlock visible.

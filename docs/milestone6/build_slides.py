@@ -114,10 +114,10 @@ bullets(sl,["No access keys: short-lived OIDC credentials","Deploy role: ECS upd
 
 # 9 rollback
 sl = slide("Health check and automatic rollback")
-bullets(sl,["Health failed → restore recorded revisions → wait stable → re-check health → write ROLLED BACK → run fails (red)",
+bullets(sl,["Health failed → restore recorded revisions → wait stable → re-check health → run fails (red)",
             "ECS circuit breaker: tasks that never start. Our step: a deployment that starts but is unhealthy",
-            "Good run: [TODO run URL, SHA]    Failed + rolled back: [TODO run URL, SHA]"],size=18,y=1.4)
-placeholder(sl,"pipeline: failed deploy → rollback → verified (job summary)",y=3.5,h=3.4)
+            "Good: run 42529005106 (9f643ee)    Failed + rolled back: run 42535888765 (1e89ac9)"],size=18,y=1.4)
+placeholder(sl,"pipeline: failed deploy → rollback → verified (Roll back step log)",y=3.5,h=3.4)
 
 # 10 controls
 sl = slide("Security and cost controls kept in place")

@@ -11,7 +11,7 @@ Before recording: error route set ON (see Member 2's mechanism), SNS subscriptio
 | 5:00 | Member 3 (Tan) | Dashboard `socialops-dev`: 5xx with alarm annotation, ECS CPU and memory, ALB, RDS. Alarm policy (Sum >= 1, 60 s, notBreaching). Show the received email. Allow the measured error-to-email delay [TODO seconds]; cut the wait in editing. Return to OK; error route off. |
 | 8:00 | Member 1 (Dan) | `terraform -chdir=infra/stack workspace show` (dev), `terraform plan` with refresh on. Show "No changes". |
 | 10:00 | Member 4 (Tan) | Push a harmless commit to `main`. Show Actions run: lint/test, build + push, deploy job (record revisions, migrate, update, health check). Show summary. |
-| 13:00 | Member 4 (Tan) | Push the controlled bad commit (`/health/ready` returns 503). Show the deploy, failed health check, automatic rollback, "ROLLED BACK" in the summary, run red. `curl https://api.socialops.website/health/ready` returns 200 on the old version. Explain circuit breaker vs this step. |
+| 13:00 | Member 4 (Tan) | Push the controlled bad commit (`/health/ready` returns 503). Show the deploy, failed health check, automatic rollback, the Roll back step showing the old revisions answering ok, run red. `curl https://api.socialops.website/health/ready` returns 200 on the old version. Explain circuit breaker vs this step. |
 
 Editing: cut while the pipeline runs (build and `services-stable` waits take minutes) and cut the alarm-to-email wait.
 
