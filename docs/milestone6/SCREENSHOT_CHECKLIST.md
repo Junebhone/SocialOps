@@ -12,8 +12,8 @@ originals for grading can stay uncropped. Region: us-east-1 (N. Virginia). Slide
 | 3 | `alert-email.png` | The ALARM email, open, sender, subject and alarm description visible. | Team alert inbox | Tan | 6 |
 | 4 | `alert-emails-list.png` | Inbox list showing ALARM, OK, ALARM (17:43, 17:51, 17:53) so the return-to-OK email is shown. | Team alert inbox | Tan | 6 |
 | 5 | `metric-filter.png` | Metric filter: pattern `{ $.status_code >= 500 }`, namespace `SocialOps/dev`, metric `Api5xxCount`, value 1. | CloudWatch > Log groups > /ecs/socialops-dev/api > Metric filters | Tan | 4 |
-| 6 | `metric-rise.png` | `Api5xxCount` rising by 1 for the controlled request. | CloudWatch > Metrics > SocialOps/dev | Zainab | 4 |
-| 7 | `json-log-line.png` | The JSON log line found by `request_id` (status_code 500, path /debug/error). | CloudWatch Logs Insights or log events | Zainab | 3 |
+| 6 | `metric-rise.png` (**PLACEHOLDER in repo**) | `Api5xxCount` rising by 1 for the controlled request. | CloudWatch > Metrics > SocialOps/dev | Zainab | 4 |
+| 7 | `json-log-line.png` (**PLACEHOLDER in repo**) | The JSON log line found by `request_id` (status_code 500, path /debug/error). | CloudWatch Logs Insights or log events | Zainab | 3 |
 | 8 | `sns-confirmed.png` | SNS topic `socialops-dev-alerts`, email subscription status Confirmed. | SNS > Topics > socialops-dev-alerts > Subscriptions | Tan | 6 |
 | 9 | `pipeline-good.png` | Run 42529005106 (green): job list and summary with rollback target and new revisions. | https://github.com/Junebhone/SocialOps/actions/runs/42529005106 | Tan | 8 |
 | 10 | `pipeline-failed-rollback.png` | Run 42535888765 (red): health check failing 10/10, the "Roll back" step, summary "ROLLED BACK". | https://github.com/Junebhone/SocialOps/actions/runs/42535888765 | Tan | 9 |
@@ -26,6 +26,26 @@ originals for grading can stay uncropped. Region: us-east-1 (N. Virginia). Slide
 Before the video: error route switch must be `false`
 (`aws ssm get-parameter --name /socialops-dev/enable-error-route --query Parameter.Value --output text`),
 alarm state `OK`, nobody sending test requests.
+
+## Status
+
+| # | Screenshot | Status |
+|---|---|---|
+| 1 | dashboard (top, bottom) | DONE |
+| 2 | alarm policy | TODO Tan |
+| 3 | ALARM email | TODO Tan |
+| 4 | inbox list | TODO Tan |
+| 5 | metric filter | TODO Tan |
+| 6 | metric rise | PLACEHOLDER, Zainab |
+| 7 | JSON log line by request_id | PLACEHOLDER, Zainab |
+| 8 | SNS confirmed | TODO Tan |
+| 9 | pipeline good run | TODO Tan |
+| 10 | pipeline failed + rollback | TODO Tan |
+| 11 | pipeline revert run | TODO Tan |
+| 12 | health after rollback | TODO Tan |
+| 13 | terraform plan, No changes | TODO Dan |
+| 14 | live app | TODO Tan |
+| 15 | security controls (optional) | TODO Tan |
 
 ## How to get each one
 
