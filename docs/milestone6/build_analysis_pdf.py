@@ -1,3 +1,4 @@
+# ruff: noqa
 """Render Milestone6_Analysis.md to a one-page PDF (reportlab). Fails if it needs 2 pages."""
 import re, sys
 from pathlib import Path

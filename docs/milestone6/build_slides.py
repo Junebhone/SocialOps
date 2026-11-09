@@ -1,3 +1,4 @@
+# ruff: noqa
 """Build Milestone6_SocialOps.pptx. Placeholders are labelled [SCREENSHOT: ...] / [TODO ...]."""
 from pathlib import Path
 from pptx import Presentation
