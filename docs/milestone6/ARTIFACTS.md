@@ -12,7 +12,7 @@ Status: done = verified with real output; TODO = not yet produced. Update as evi
 | Log-based metric definition | `infra/modules/observability/metric.tf`; filter `{ $.status_code >= 500 }` -> `SocialOps/dev` `Api5xxCount` | merged and live; TODO `aws logs describe-metric-filters` output in evidence/ |
 | Dashboard definition (JSON) | `docs/milestone6/evidence/dashboard.json` (`aws cloudwatch get-dashboard --dashboard-name socialops-dev`). Dashboard is live. | TODO export |
 | Alarm definition (JSON) | `docs/milestone6/evidence/alarm.json` (`aws cloudwatch describe-alarms`) | TODO |
-| Dashboard screenshot | `docs/milestone6/evidence/dashboard.png` | TODO (Tan) |
+| Dashboard screenshot | `docs/milestone6/evidence/dashboard-top.png`, `dashboard-bottom.png` | done |
 | Alert policy screenshot | `docs/milestone6/evidence/alarm-policy.png` | TODO (Tan) |
 | Received alert email screenshot | `docs/milestone6/evidence/alert-email.png` | TODO (Tan) |
 | Controlled 5xx demo (log line by request_id, metric rise) | `docs/milestone6/evidence/` | TODO (Zainab + Tan) |

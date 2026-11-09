@@ -7,7 +7,7 @@ originals for grading can stay uncropped. Region: us-east-1 (N. Virginia). Slide
 
 | # | File | What to capture | Where | Who | Slide |
 |---|---|---|---|---|---|
-| 1 | `dashboard.png` | Whole dashboard `socialops-dev`: 5xx graph with the threshold line, ALB, ECS CPU and memory (api, web, worker), response time, RDS CPU, alarm state. Time range covering the test (last 1 h). | CloudWatch > Dashboards > socialops-dev | Tan | 5 |
+| 1 | `dashboard-top.png`, `dashboard-bottom.png` (**DONE**, account bar cropped) | Whole dashboard `socialops-dev`: 5xx graph with the threshold line, ALB, ECS CPU and memory (api, web, worker), response time, RDS CPU, alarm state. Time range covering the test (last 1 h). | CloudWatch > Dashboards > socialops-dev | Tan | 5 |
 | 2 | `alarm-policy.png` | Alarm `socialops-dev-api-5xx`: metric `SocialOps/dev` `Api5xxCount`, Sum, 60 s, >= 1, missing data = not breaching, actions to `socialops-dev-alerts` for ALARM and OK. | CloudWatch > Alarms > socialops-dev-api-5xx (Details and Actions) | Tan | 6 |
 | 3 | `alert-email.png` | The ALARM email, open, sender, subject and alarm description visible. | Team alert inbox | Tan | 6 |
 | 4 | `alert-emails-list.png` | Inbox list showing ALARM, OK, ALARM (17:43, 17:51, 17:53) so the return-to-OK email is shown. | Team alert inbox | Tan | 6 |
@@ -26,3 +26,33 @@ originals for grading can stay uncropped. Region: us-east-1 (N. Virginia). Slide
 Before the video: error route switch must be `false`
 (`aws ssm get-parameter --name /socialops-dev/enable-error-route --query Parameter.Value --output text`),
 alarm state `OK`, nobody sending test requests.
+
+## How to get each one
+
+Open the AWS console in us-east-1 (N. Virginia). On a Mac, **Shift+Cmd+4** then drag selects an area; the file
+lands on the Desktop. Rename it to the name in the table and copy it into `docs/milestone6/evidence/`.
+
+1. **Dashboard** (done). If you retake it: CloudWatch > Dashboards > `socialops-dev`, choose **3h** or **1h**, scroll to
+   capture the top four graphs, then the bottom row with the alarm-state widget.
+2. **Alarm policy**: CloudWatch > Alarms > All alarms > `socialops-dev-api-5xx`. Capture the **Details** tab (metric,
+   Sum, 60 seconds, threshold, missing data treatment) and the **Actions** tab (SNS topic for In alarm and OK).
+3. **ALARM email**: open the "ALARM: socialops-dev-api-5xx" email and capture the body.
+4. **Inbox list**: capture the list with the three alert emails and their times.
+5. **Metric filter**: CloudWatch > Log groups > `/ecs/socialops-dev/api` > **Metric filters** tab. Capture the filter
+   pattern and the metric name, namespace and value.
+6. **SNS**: Simple Notification Service > Topics > `socialops-dev-alerts` > Subscriptions. Capture status **Confirmed**.
+7. **Pipeline runs**: open each run URL in the table above. For the good run, capture the job list and the **Summary**
+   (scroll to the rollback target and new revisions). For the red run, expand the Deploy job: the health check
+   failing 10 times, the **Roll back** step, and the **Summary** line "ROLLED BACK".
+8. **Health after rollback**: in a terminal run `curl https://api.socialops.website/health/ready` and capture the
+   `{"status":"ok",...}` line.
+9. **Live app**: open https://app.socialops.website in a browser, capture with the padlock visible.
+10. **Security** (optional): RDS > Databases > `socialops-dev` > Connectivity: Publicly accessible **No**. Billing >
+    Budgets: `SocialOps-Budget`.
+
+Zainab: `metric-rise.png` (CloudWatch > Metrics > All metrics > SocialOps/dev > Api5xxCount, Sum, 1 minute) and
+`json-log-line.png` (CloudWatch > Logs Insights, log group `/ecs/socialops-dev/api`, query
+`fields @timestamp, @message | filter request_id = "<id>"`).
+Dan: `terraform plan` with "No changes" visible.
+
+Crop out personal usernames and emails from the AWS header or inbox before adding screenshots to the public repo.
