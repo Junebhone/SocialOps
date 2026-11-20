@@ -1,0 +1,1 @@
+One viral post, two thousand comments. SocialOps triages every one, drafts the reply, and waits for you to approve it. Now running on AWS, with deploys that roll themselves back.
