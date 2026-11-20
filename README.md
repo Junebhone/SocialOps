@@ -507,8 +507,8 @@ LLM_MODEL_VISION=qwen3.5:9b     # media — same weights as TEXT
 ```env
 LLM_PROVIDER=bedrock
 LLM_MODEL_FAST=anthropic.claude-haiku-4-5-20251001-v1:0
-LLM_MODEL_TEXT=us.anthropic.claude-sonnet-4-6
-LLM_MODEL_VISION=us.anthropic.claude-sonnet-4-6
+LLM_MODEL_TEXT=us.anthropic.claude-haiku-4-5-20251001-v1:0
+LLM_MODEL_VISION=us.anthropic.claude-haiku-4-5-20251001-v1:0
 AWS_REGION=us-east-1            # credentials via the usual AWS chain
 ```
 

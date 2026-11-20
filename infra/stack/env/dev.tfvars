@@ -37,8 +37,8 @@ image_tag = "2ad28d6e02e8faff81c0ba3fb638a0466bb0055b"
 # hence the us. prefix; the worker role allows both profiles and base models.
 llm_provider     = "bedrock"
 llm_model_fast   = "us.anthropic.claude-haiku-4-5-20251001-v1:0"
-llm_model_text   = "us.anthropic.claude-sonnet-4-6"
-llm_model_vision = "us.anthropic.claude-sonnet-4-6"
+llm_model_text   = "us.anthropic.claude-haiku-4-5-20251001-v1:0"
+llm_model_vision = "us.anthropic.claude-haiku-4-5-20251001-v1:0"
 
 log_retention_days = 7
 
