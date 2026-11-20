@@ -254,7 +254,7 @@ body.editing [contenteditable] { outline: 1px dashed rgba(176,83,44,.5); }
 <main class="deck-stage" id="deckStage">
 
 <!-- ========== 1 · TITLE (0:00–0:30) ========== -->
-<section class="slide s-title active" data-notes="Let the 30-second launch video play with no narration. Then: 'SocialOps: a multi-agent command center for small-business social media, which I migrated from a laptop to AWS.' Agents triage every comment and draft every reply; a person approves each one. Press → straight into the problem.">
+<section class="slide s-title active" data-notes="Speaker A · Bhone. Let the 30-second launch video play with no narration. Then: 'SocialOps: a multi-agent command center for small-business social media, which I migrated from a laptop to AWS.' Agents triage every comment and draft every reply; a person approves each one. Press → straight into the problem.">
   <div>
     <div class="kicker reveal" style="--d:.1">EDS 6348 · Final presentation</div>
     <h1 class="reveal" style="--d:.25; margin-top:40px">Social<em>Ops</em>,<br>from laptop<br>to AWS.</h1>
@@ -275,7 +275,7 @@ body.editing [contenteditable] { outline: 1px dashed rgba(176,83,44,.5); }
 </section>
 
 <!-- ========== 2 · BUSINESS PROBLEM (0:30–2:00) ========== -->
-<section class="slide" data-notes="One slide, 90 seconds. Start with the person: a marketing manager running 3 to 5 brands, not a developer. They don't want servers; they want every comment triaged and every reply drafted before they get to their desk. Left = the on-prem reality (one laptop or one VM). Right = what the cloud changes. Row 1: a spike of 2,000 comments an hour swamps one machine; a queue and workers absorb it, load balancer across two AZs. Row 2: one disk, one power supply, one reboot takes the business offline; managed Postgres with backups, Fargate replaces failed tasks. Row 3: models need a GPU box idle most of the day; Bedrock is pay per token and cost is logged on every agent call. Row 4: deploys by SSH and hand edits, no audit trail; push, test, deploy, health check, automatic rollback. Row 5: nobody notices failures until a customer does; JSON logs, 5xx metric, alarm, email in about a minute.">
+<section class="slide" data-notes="Speaker A · Bhone. One slide, 90 seconds. Start with the person: a marketing manager running 3 to 5 brands, not a developer. They don't want servers; they want every comment triaged and every reply drafted before they get to their desk. Left = the on-prem reality (one laptop or one VM). Right = what the cloud changes. Row 1: a spike of 2,000 comments an hour swamps one machine; a queue and workers absorb it, load balancer across two AZs. Row 2: one disk, one power supply, one reboot takes the business offline; managed Postgres with backups, Fargate replaces failed tasks. Row 3: models need a GPU box idle most of the day; Bedrock is pay per token and cost is logged on every agent call. Row 4: deploys by SSH and hand edits, no audit trail; push, test, deploy, health check, automatic rollback. Row 5: nobody notices failures until a customer does; JSON logs, 5xx metric, alarm, email in about a minute.">
   <div class="kicker reveal" style="--d:.05">01 · The business problem</div>
   <h2 class="reveal" style="--d:.15">One viral post. <em>Two thousand comments.</em></h2>
   <div class="pa big">
@@ -289,7 +289,7 @@ body.editing [contenteditable] { outline: 1px dashed rgba(176,83,44,.5); }
 </section>
 
 <!-- ========== 3 · MIGRATION JOURNEY (2:00–3:00) ========== -->
-<section class="slide" data-notes="One minute. Let the rail draw. 1 Local: Docker Compose, Postgres, Redis, Ollama on a laptop. 2 Lift and shift: one EC2 VM, runtimes installed by hand. 3 Containerize: multi-stage, multi-arch images in ECR. 4 Decouple state: RDS, S3 behind one storage interface, Secrets Manager. 5 Orchestrate: EKS with probes, autoscaler, disruption budgets; 337 of 360 requests OK while draining both nodes. 6 Automate: ECS Fargate in Terraform, CI/CD with rollback, CloudWatch alarms. The point: the code barely changed. Config only from environment variables, storage behind one interface, a stateless API.">
+<section class="slide" data-notes="Speaker B · Zainab. One minute. Let the rail draw. 1 Local: Docker Compose, Postgres, Redis, Ollama on a laptop. 2 Lift and shift: one EC2 VM, runtimes installed by hand. 3 Containerize: multi-stage, multi-arch images in ECR. 4 Decouple state: RDS, S3 behind one storage interface, Secrets Manager. 5 Orchestrate: EKS with probes, autoscaler, disruption budgets; 337 of 360 requests OK while draining both nodes. 6 Automate: ECS Fargate in Terraform, CI/CD with rollback, CloudWatch alarms. The point: the code barely changed. Config only from environment variables, storage behind one interface, a stateless API.">
   <div class="kicker reveal" style="--d:.05">02 · How we got here</div>
   <h2 class="reveal" style="--d:.15">Six moves, <em>one codebase</em>.</h2>
   <div class="tl">
@@ -305,7 +305,7 @@ body.editing [contenteditable] { outline: 1px dashed rgba(176,83,44,.5); }
 </section>
 
 <!-- ========== 4 · ARCHITECTURE (3:00–5:00) ========== -->
-<section class="slide" data-notes="Two minutes. Walk the orange path first: browser, Route 53, HTTPS load balancer, web and API on Fargate in private subnets. Then the green path: the API only enqueues to Redis; the worker does the slow model calls on Bedrock and writes results to Postgres and S3. A spike grows the queue, not the latency. Then the bottom row: GitHub Actions deploys through an OIDC role with no stored keys; logs feed the 5xx metric and the alarm. Say the orchestrator is a typed graph, and routing is an if-statement, not a model's decision.">
+<section class="slide" data-notes="Speaker B · Zainab. Two minutes. Walk the orange path first: browser, Route 53, HTTPS load balancer, web and API on Fargate in private subnets. Then the green path: the API only enqueues to Redis; the worker does the slow model calls on Bedrock and writes results to Postgres and S3. A spike grows the queue, not the latency. Then the bottom row: GitHub Actions deploys through an OIDC role with no stored keys; logs feed the 5xx metric and the alarm. Say the orchestrator is a typed graph, and routing is an if-statement, not a model's decision.">
   <div class="kicker reveal" style="--d:.05">03 · What runs today</div>
   <h2 class="reveal" style="--d:.15" >Fast requests. <em>Queued work.</em></h2>
   <div class="legend reveal" style="--d:.3"><span>request path</span><span class="g">agent work (async)</span><span class="d">supporting</span></div>
@@ -355,7 +355,7 @@ body.editing [contenteditable] { outline: 1px dashed rgba(176,83,44,.5); }
 </section>
 
 <!-- ========== 5 · DECISIONS (5:00–6:00) ========== -->
-<section class="slide" data-notes="One minute, twenty seconds each. These are the ones to defend in Q&A. 1: we ran both; EKS earned its keep for disruption budgets and autoscaling, but for three services it's a control plane and ops time we don't need. 2: agents ask for a tier (fast, standard, vision), config maps tiers to models, so local Ollama and cloud Bedrock are one environment variable apart. 3: the ECS circuit breaker only catches tasks that never start; our pipeline checks readiness and rolls back a deploy that starts but is unhealthy. Proven in run 42535888765: 10 of 10 checks failed, previous revisions restored.">
+<section class="slide" data-notes="Speaker C · Dan. One minute, twenty seconds each. These are the ones to defend in Q&A. 1: we ran both; EKS earned its keep for disruption budgets and autoscaling, but for three services it's a control plane and ops time we don't need. 2: agents ask for a tier (fast, standard, vision), config maps tiers to models, so local Ollama and cloud Bedrock are one environment variable apart. 3: the ECS circuit breaker only catches tasks that never start; our pipeline checks readiness and rolls back a deploy that starts but is unhealthy. Proven in run 42535888765: 10 of 10 checks failed, previous revisions restored.">
   <div class="kicker reveal" style="--d:.05">04 · Decisions I'd defend</div>
   <h2 class="reveal" style="--d:.15">Three choices, <em>each with evidence</em>.</h2>
   <div class="dec">
@@ -366,7 +366,7 @@ body.editing [contenteditable] { outline: 1px dashed rgba(176,83,44,.5); }
 </section>
 
 <!-- ========== 6 · PRODUCTION READINESS (6:00–7:30) ========== -->
-<section class="slide" data-notes="The highest-value slide: 90 seconds. Open with: most of production is a tfvars change, because the Terraform modules already take these switches and dev picks the cheapest values. Availability: db_multi_az, NAT per AZ, desired_count 2+, Redis replica. Scaling: API on CPU target tracking; workers on queue depth (custom metric). Data: 35-day point-in-time recovery, deletion protection, cross-region snapshots, written RPO/RTO. Security: user auth (Cognito/SSO), WAF, rate limits, ingress not 0.0.0.0/0, per-brand tenancy. Deploys: blue/green or canary with CodeDeploy, staging gate, expand/contract migrations. Observability: SLOs and error budget, X-Ray across agents, queue-age and LLM cost alarms, paging. AI: Bedrock Guardrails, make eval as a CI gate, per-brand token budgets. Cost: ~$5/day dev; Savings Plans, Graviton, workers to zero overnight, S3 lifecycle.">
+<section class="slide" data-notes="Speaker C · Dan. The highest-value slide: 90 seconds. Open with: most of production is a tfvars change, because the Terraform modules already take these switches and dev picks the cheapest values. Availability: db_multi_az, NAT per AZ, desired_count 2+, Redis replica. Scaling: API on CPU target tracking; workers on queue depth (custom metric). Data: 35-day point-in-time recovery, deletion protection, cross-region snapshots, written RPO/RTO. Security: user auth (Cognito/SSO), WAF, rate limits, ingress not 0.0.0.0/0, per-brand tenancy. Deploys: blue/green or canary with CodeDeploy, staging gate, expand/contract migrations. Observability: SLOs and error budget, X-Ray across agents, queue-age and LLM cost alarms, paging. AI: Bedrock Guardrails, make eval as a CI gate, per-brand token budgets. Cost: ~$5/day dev; Savings Plans, Graviton, workers to zero overnight, S3 lifecycle.">
   <div class="kicker reveal" style="--d:.05">05 · Production readiness</div>
   <h2 class="reveal" style="--d:.15">Built for a demo. <em>Ready to grow up.</em></h2>
   <p class="callout reveal" style="--d:.3">Most of production is a tfvars change.</p>
@@ -384,7 +384,7 @@ body.editing [contenteditable] { outline: 1px dashed rgba(176,83,44,.5); }
 </section>
 
 <!-- ========== 7 · LIVE DEMO (7:30–11:30) ========== -->
-<section class="slide s-demo" data-notes="Switch to the browser. Order: what the user sees, then what operations sees. 1 Inbox (40s): approve a drafted reply; point at triage badges. 2 Content (40s): upload ridgeline_beans_flatlay.png; media check, then posts for X, Instagram, LinkedIn. While Bedrock works, go to 3 Agents (40s): tokens, latency and cost per call. Back to Content: three drafts. 4 CloudWatch (60s): SSM switch on, one curl to /debug/error, switch off, find the JSON line by request_id, metric rises. 5 Rollback (40s): show the recorded run 42535888765; don't push live (a bad deploy takes 12 minutes). 6 The alert email has arrived (10s). If anything breaks: one sentence, press V for the backup clip.">
+<section class="slide s-demo" data-notes="Speaker D · Thanoj (drives). Switch to the browser. Order: what the user sees, then what operations sees. 1 Inbox (40s): approve a drafted reply; point at triage badges. 2 Content (40s): upload ridgeline_beans_flatlay.png; media check, then posts for X, Instagram, LinkedIn. While Bedrock works, go to 3 Agents (40s): tokens, latency and cost per call. Back to Content: three drafts. 4 CloudWatch (60s): SSM switch on, one curl to /debug/error, switch off, find the JSON line by request_id, metric rises. 5 Rollback (40s): show the recorded run 42535888765; don't push live (a bad deploy takes 12 minutes). 6 The alert email has arrived (10s). If anything breaks: one sentence, press V for the backup clip.">
   <div class="kicker reveal" style="--d:.05">06 · Live demo</div>
   <h2 class="reveal" style="--d:.15">Watch it <em>work</em>, then watch it <em>fail safely</em>.</h2>
   <div class="live reveal" style="--d:.25"><i></i>app.socialops.website</div>
@@ -406,7 +406,7 @@ body.editing [contenteditable] { outline: 1px dashed rgba(176,83,44,.5); }
 </section>
 
 <!-- ========== 8 · CLOSE (11:30–12:00) ========== -->
-<section class="slide" data-notes="Thirty seconds. Read the five lines, they mirror the five pains on slide 2. Then: 'Happy to go deeper on any of it.' Stop talking and wait for questions. The Q&A bank is in docs/final/PRESENTATION_PLAN.md.">
+<section class="slide" data-notes="Speaker A · Bhone, then host Q&A. Thirty seconds. Read the five lines, they mirror the five pains on slide 2. Then: 'Happy to go deeper on any of it.' Stop talking and wait for questions. The Q&A bank is in docs/final/PRESENTATION_PLAN.md.">
   <div class="kicker reveal" style="--d:.05">Close</div>
   <h2 class="reveal" style="--d:.15">Five pains, <em>five answers</em>.</h2>
   <div class="close-list">

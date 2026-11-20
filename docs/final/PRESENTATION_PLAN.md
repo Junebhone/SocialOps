@@ -3,7 +3,7 @@
 15 minutes total, setup included. Graded: Business problem 15 · Architecture and production readiness 45 · Live demo 25 · Q&A and delivery 15.
 The tone to hold the whole time: **"I migrated it, I measured it, and I know exactly what I'd change for production."**
 
-State checked 2026-11-19: ECS `socialops-dev` (us-east-1) runs api `:8`, web `:7`, worker `:8`, all ALB targets healthy. RDS `socialops-dev` available.
+State checked 2026-11-20: ECS `socialops-dev` (us-east-1) runs api `:11`, web `:10`, worker `:11`, all rollouts completed. RDS `socialops-dev` available.
 
 ---
 
@@ -22,6 +22,27 @@ State checked 2026-11-19: ECS `socialops-dev` (us-east-1) runs api `:8`, web `:7
 | 12:00–15:00 | Q&A | 15 | — |
 
 The 45-point section gets ~5.5 minutes, the most of any segment. The business slide is **one slide only** (rubric says so).
+
+
+### Four speakers
+
+Names are a first guess from the repo history: swap them freely, the blocks stay the same. Each block is one continuous stretch, so there are only three handoffs plus the close.
+
+| Speaker | Slides | Time | Length | Owns in Q&A |
+|---|---|---|---|---|
+| **A · Bhone** | 1 Title, 2 Business | 0:00–2:00 | 2:00 | Business case, users, cost |
+| **B · Zainab** | 3 Journey, 4 Architecture | 2:00–5:00 | 3:00 | Migration, data, ECS vs EKS vs Lambda, queue |
+| **C · Dan** | 5 Decisions, 6 Production readiness | 5:00–7:30 | 2:30 | AZ failure, scaling, security, DR, what we'd change |
+| **D · Thanoj** | 7 Live demo (drives the laptop) | 7:30–11:30 | 4:00 | CI/CD, rollback, monitoring, alarms |
+| **A · Bhone** | 8 Close, then hosts Q&A | 11:30–15:00 | 0:30 + Q&A | Routes each question to its owner |
+
+Handoff lines (say the next person's name, it reads as a team):
+- A → B: "That's the why. Zainab will show how we got it to the cloud."
+- B → C: "That's what runs today. Dan, which of those choices would we defend?"
+- C → D: "Enough slides. Thanoj will show it running live."
+- D → A: "That's the app, the alarm and the rollback, all live. Bhone will close."
+
+During the demo: D drives one laptop the whole time, with no mouse handoffs. A sits next to it with the backup video ready and calls the switch if Bedrock stalls. B and C stand back. In Q&A, A repeats the question, names its owner, and anyone may add one sentence after.
 
 ---
 
@@ -118,7 +139,7 @@ Commands for step 4 are in `docs/milestone6/handoff/SOLO_RUNBOOK.md` (3:00 segme
 Say one sentence ("Bedrock is slow right now, here's the same flow recorded this morning"), switch to the backup clip, keep going. Calm recovery scores better than a perfect demo.
 
 ### Known risk
-`main` currently ends at `06abd96`, which **re-applies the "break readiness on ECS" demo change**. The last pipeline run on it failed and rolled back to api `:8`, so the live site is fine. But any push to `main` will deploy a broken readiness check and roll back again. If you want a green deploy, revert `06abd96` first.
+Resolved 2026-11-20: PR #24 reverted `06abd96`, and the deploy from `main` went green. A push to `main` now deploys normally (~7.5 min). Still don't push during the presentation.
 
 ---
 
